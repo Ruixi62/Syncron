@@ -1,0 +1,1 @@
+"""Syncron — API (FastAPI + PostgreSQL)."""

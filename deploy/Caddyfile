@@ -1,0 +1,20 @@
+# Reverse proxy HTTPS. Le certificat est obtenu et renouvelé automatiquement.
+{$SYNCRON_DOMAIN} {
+	encode zstd gzip
+
+	@media path /media/*
+	header @media Cache-Control "public, max-age=31536000, immutable"
+
+	request_body {
+		max_size 4MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	reverse_proxy api:8000
+}

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "syncron/craft/items.schema.json",
+  "title": "Syncron — Craft : catalogue",
+  "description": "Autocomplétion et vérification dans VS Code. L'application refait une validation complète au chargement (références, cycles…).",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": { "type": "integer", "enum": [1, 2] },
+    "default_station": {
+      "type": "string",
+      "description": "Atelier appliqué aux recettes qui n'ont pas de « station »."
+    },
+    "stations": {
+      "type": "object",
+      "description": "Lieux de fabrication : { \"id\": { \"name\": … } }",
+      "additionalProperties": { "$ref": "#/$defs/station" }
+    },
+    "skills": {
+      "type": "object",
+      "description": "Compétences à niveaux utilisées comme prérequis (métiers, R&D…).",
+      "additionalProperties": { "$ref": "#/$defs/skill" }
+    },
+    "items": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/item" }
+    }
+  },
+  "$defs": {
+    "text": { "type": "string" },
+    "duration": {
+      "description": "Temps par craft : secondes (entier) ou texte « instant », « 30s », « 5m », « 1h30 », « 2h15m », « 1j ».",
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "string", "pattern": "^([Ii]nstant|[Ii]nstantané|(\\s*\\d+\\s*(min|sec|[smhjdSMHJD])?)+\\s*)$" }
+      ]
+    },
+    "station": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "image": { "type": "string", "description": "Relatif à images/. Par défaut : images/stations/<id>.png" }
+      }
+    },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "kind": { "enum": ["job", "research", "other"], "description": "job = métier, research = R&D" },
+        "max_level": { "type": "integer", "minimum": 1 },
+        "description": { "type": "string" }
+      }
+    },
+    "item": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "raw", "description": "Ressource primaire : ne se fabrique pas." },
+            "name": { "type": "string" },
+            "category": { "type": "string" },
+            "image": { "type": "string" },
+            "description": { "type": "string" }
+          }
+        },
+        {
+          "required": ["recipe"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "crafted" },
+            "name": { "type": "string" },
+            "category": { "type": "string" },
+            "image": { "type": "string", "description": "Relatif à images/. Par défaut : images/<id>.png" },
+            "description": { "type": "string" },
+            "output": { "type": "integer", "minimum": 1, "default": 1, "description": "Unités produites par craft." },
+            "station": { "type": "string", "description": "Id d'un atelier déclaré dans « stations »." },
+            "time": { "$ref": "#/$defs/duration" },
+            "requires": {
+              "type": "object",
+              "description": "{ \"id_competence\": niveau_minimum }",
+              "additionalProperties": { "type": "integer", "minimum": 1 }
+            },
+            "recipe": {
+              "type": "object",
+              "minProperties": 1,
+              "description": "{ \"id_ingredient\": quantité_par_craft }",
+              "additionalProperties": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

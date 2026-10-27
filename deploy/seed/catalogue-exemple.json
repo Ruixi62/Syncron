@@ -1,0 +1,154 @@
+{
+  "$schema": "./catalogue.schema.json",
+  "schema_version": 2,
+  "default_station": "table_craft",
+  "stations": {
+    "table_craft": {
+      "name": "Table de craft",
+      "description": "Table de fabrication standard."
+    },
+    "station_craft": {
+      "name": "Station de craft"
+    },
+    "atelier_debutant": {
+      "name": "Atelier du débutant"
+    },
+    "atelier_energie": {
+      "name": "Atelier d'énergie"
+    },
+    "atelier_explosif": {
+      "name": "Atelier d'explosifs"
+    }
+  },
+  "skills": {
+    "ingenieur": {
+      "name": "Ingénieur",
+      "kind": "job",
+      "max_level": 50
+    },
+    "artificier": {
+      "name": "Artificier",
+      "kind": "job",
+      "max_level": 50
+    },
+    "rd_energie": {
+      "name": "R&D Énergie",
+      "kind": "research",
+      "max_level": 10
+    },
+    "rd_industrie": {
+      "name": "R&D Industrie",
+      "kind": "research",
+      "max_level": 10
+    }
+  },
+  "items": {
+    "quartz": { "name": "Quartz", "type": "raw", "category": "Minerais" },
+    "pierre": { "name": "Pierre", "type": "raw", "category": "Blocs" },
+    "redstone": { "name": "Redstone", "type": "raw", "category": "Minerais" },
+    "bois": { "name": "Bois", "type": "raw", "category": "Blocs" },
+    "fer": { "name": "Lingot de fer", "type": "raw", "category": "Lingots" },
+    "lingot_etain": { "name": "Lingot d'étain", "type": "raw", "category": "Lingots" },
+    "lingot_cuivre": { "name": "Lingot de cuivre", "type": "raw", "category": "Lingots" },
+    "or": { "name": "Lingot d'or", "type": "raw", "category": "Lingots" },
+    "poudre": { "name": "Poudre à canon", "type": "raw", "category": "Minerais" },
+    "sable": { "name": "Sable", "type": "raw", "category": "Blocs" },
+    "repeteur_redstone": {
+      "name": "Répéteur Redstone",
+      "type": "crafted",
+      "category": "Redstone",
+      "recipe": { "quartz": 3, "pierre": 2, "redstone": 1 }
+    },
+    "vis": {
+      "name": "Vis",
+      "type": "crafted",
+      "category": "Composants",
+      "description": "Une recette produit 4 vis.",
+      "station": "atelier_debutant",
+      "time": "10s",
+      "output": 4,
+      "recipe": { "fer": 1 }
+    },
+    "plaque_fer": {
+      "name": "Plaque de fer",
+      "type": "crafted",
+      "category": "Composants",
+      "station": "atelier_debutant",
+      "time": "20s",
+      "recipe": { "fer": 2 }
+    },
+    "circuit_basique": {
+      "name": "Circuit basique",
+      "type": "crafted",
+      "category": "Électronique",
+      "station": "station_craft",
+      "time": "1m",
+      "recipe": { "lingot_cuivre": 2, "redstone": 1, "vis": 2 }
+    },
+    "circuit_avance": {
+      "name": "Circuit avancé",
+      "type": "crafted",
+      "category": "Électronique",
+      "station": "station_craft",
+      "time": "3m",
+      "requires": { "ingenieur": 10 },
+      "recipe": { "lingot_etain": 3, "bois": 1, "repeteur_redstone": 1 }
+    },
+    "circuit_industriel": {
+      "name": "Circuit industriel",
+      "type": "crafted",
+      "category": "Électronique",
+      "station": "atelier_energie",
+      "time": "15m",
+      "requires": { "ingenieur": 25, "rd_industrie": 2 },
+      "recipe": { "circuit_avance": 2, "circuit_basique": 1, "or": 1 }
+    },
+    "bloc_machine": {
+      "name": "Bloc machine",
+      "type": "crafted",
+      "category": "Machines",
+      "station": "station_craft",
+      "time": "5m",
+      "recipe": { "plaque_fer": 4, "vis": 2 }
+    },
+    "machine_x": {
+      "name": "Machine X",
+      "type": "crafted",
+      "category": "Machines",
+      "description": "Exemple du cahier des charges.",
+      "station": "atelier_energie",
+      "time": "1h",
+      "requires": { "ingenieur": 20, "rd_energie": 3 },
+      "recipe": { "circuit_avance": 6, "quartz": 10 }
+    },
+    "machine_y": {
+      "name": "Machine Y",
+      "type": "crafted",
+      "category": "Machines",
+      "description": "Fusionne les vis venant de plusieurs branches.",
+      "station": "atelier_energie",
+      "time": "2h30",
+      "requires": { "ingenieur": 30, "rd_energie": 5 },
+      "recipe": { "bloc_machine": 1, "circuit_basique": 1, "circuit_industriel": 1 }
+    },
+    "dynamite": {
+      "name": "Dynamite",
+      "type": "crafted",
+      "category": "Explosifs",
+      "station": "atelier_explosif",
+      "time": "instant",
+      "output": 2,
+      "requires": { "artificier": 5 },
+      "recipe": { "poudre": 3, "sable": 2 }
+    },
+    "charge_c4": {
+      "name": "Charge C4",
+      "type": "crafted",
+      "category": "Explosifs",
+      "station": "atelier_explosif",
+      "time": "45m",
+      "requires": { "artificier": 25, "rd_industrie": 4 },
+      "recipe": { "dynamite": 4, "circuit_basique": 1, "plaque_fer": 2 }
+    }
+  }
+}

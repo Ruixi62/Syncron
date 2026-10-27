@@ -1,0 +1,64 @@
+# Syncron — déploiement complet : PostgreSQL + API + Caddy (HTTPS automatique Let's Encrypt).
+# Usage : cp .env.example .env ; éditer .env ; docker compose up -d --build
+name: syncron
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: syncron
+      POSTGRES_USER: syncron
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?définir POSTGRES_PASSWORD dans .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U syncron -d syncron"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SYNCRON_ENV: production
+      SYNCRON_DATABASE_URL: postgresql+asyncpg://syncron:${POSTGRES_PASSWORD}@db:5432/syncron
+      SYNCRON_PUBLIC_URL: https://${SYNCRON_DOMAIN:?définir SYNCRON_DOMAIN dans .env}
+      SYNCRON_JWT_SECRET: ${SYNCRON_JWT_SECRET:?définir SYNCRON_JWT_SECRET dans .env}
+      SYNCRON_DISCORD_CLIENT_ID: ${SYNCRON_DISCORD_CLIENT_ID:?définir SYNCRON_DISCORD_CLIENT_ID dans .env}
+      SYNCRON_DISCORD_CLIENT_SECRET: ${SYNCRON_DISCORD_CLIENT_SECRET:?définir SYNCRON_DISCORD_CLIENT_SECRET dans .env}
+      SYNCRON_DISCORD_REQUIRED_GUILD_ID: ${SYNCRON_DISCORD_REQUIRED_GUILD_ID:-}
+      SYNCRON_ADMIN_DISCORD_IDS: ${SYNCRON_ADMIN_DISCORD_IDS:?définir SYNCRON_ADMIN_DISCORD_IDS dans .env}
+      SYNCRON_MIN_CLIENT_VERSION: ${SYNCRON_MIN_CLIENT_VERSION:-4.0.0}
+      SYNCRON_WORKERS: ${SYNCRON_WORKERS:-2}
+    volumes:
+      - media:/data/media
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SYNCRON_DOMAIN: ${SYNCRON_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  db-data:
+  media:
+  caddy-data:
+  caddy-config:
