@@ -27,7 +27,7 @@ CALLBACK_PATH = "/callback"
 DEFAULT_TIMEOUT = 300.0
 ERROR_MESSAGES = {
     "access_denied": "Connexion annulée sur Discord.",
-    "not_in_guild": "Ce compte Discord n'est pas membre du serveur requis par Syncron.",
+    "not_in_guild": "Ce compte Discord n'est pas membre du serveur Discord du pays : Syncron lui est fermé.",
     "banned": "Ce compte est suspendu.",
     "discord_unavailable": "Discord n'a pas répondu. Réessaie dans un instant.",
 }

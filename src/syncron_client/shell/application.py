@@ -24,6 +24,7 @@ from syncron_client.api.errors import NetworkError
 from syncron_client.api.token_store import TokenStore
 from syncron_client.catalog_store import CatalogStore
 from syncron_client.config import SERVER_URL_KEY, resolve_server_url, version_tuple
+from syncron_client.notifications import NotificationCenter
 from syncron_client.paths import AppPaths
 from syncron_client.platform.registry import ToolRegistry
 from syncron_client.platform.tool import NotifyLevel, Tool
@@ -103,6 +104,8 @@ class Launcher(QObject):
         self.runner.run(self.api.meta, self._on_meta, self._on_meta_failed)
 
     def _on_meta(self, meta: dict) -> None:
+        self.session.set_meta(meta)
+        self.login.set_nation(self.session.nation_name)
         self.login.set_dev_login(bool(meta.get("dev_login")))
         minimum = str(meta.get("min_client_version", "0"))
         if version_tuple(__version__) < version_tuple(minimum):
@@ -157,7 +160,7 @@ class Launcher(QObject):
         self._flow = None
         self.session.set_user(user)
         self.session.set_online(True)
-        self.login.set_busy("Synchronisation du catalogue…")
+        self.login.set_busy("Synchronisation des données…")
 
         def synced(_changed: bool) -> None:
             if not self.catalog.loaded:
@@ -175,20 +178,24 @@ class Launcher(QObject):
     # -- plateforme ----------------------------------------------------------------------
 
     def open_shell(self) -> None:
-        host = ShellHost(self.paths, self.api, self.session, self.runner, self.catalog)
         registry = ToolRegistry()
-        for tool in self._tools_factory():
-            if self.session.has_role(tool.info.min_role):
-                registry.register(tool)
-                tool.setup(host)
+        notifications = NotificationCenter(self.api, self.runner, self.session, self.settings)
+        host = ShellHost(self.paths, self.api, self.session, self.runner, self.catalog, notifications, registry)
+        tools = [tool for tool in self._tools_factory() if self.session.has_role(tool.info.min_role)]
+        for tool in tools:
+            registry.register(tool)
+        for tool in tools:
+            tool.setup(host)
         window = ShellWindow(registry, host, self.settings)
         window.logoutRequested.connect(self.logout)
         self.catalog.syncFailed.connect(lambda error: host.handle_error(error, "Synchronisation"))
         self.shell = Shell(registry, host, window)
         self.login.hide()
         window.show()
-        if not self.session.online:
-            host.notify("Mode hors ligne : catalogue de la dernière connexion.", NotifyLevel.WARNING)
+        if self.session.online:
+            notifications.start()
+        else:
+            host.notify("Mode hors ligne : dernières données reçues, en lecture seule.", NotifyLevel.WARNING)
 
     def logout(self, message: str = "") -> None:
         api = self.api
@@ -209,6 +216,7 @@ class Launcher(QObject):
 
     def _close_shell(self) -> None:
         if self.shell is not None:
+            self.shell.host.notifications.stop()
             with contextlib.suppress(RuntimeError, TypeError):
                 self.catalog.syncFailed.disconnect()
             self.shell.window.close()

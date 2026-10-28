@@ -34,7 +34,8 @@ class Settings(BaseSettings):
 
     media_dir: Path = Path("media")
     max_image_bytes: int = 2 * 1024 * 1024
-    min_client_version: str = "4.0.0"
+    min_client_version: str = "4.1.0"
+    nation_name: str = Field("", max_length=60, description="Nom du pays affiché dans le client")
     dev_login: bool = Field(False, description="Connexion sans Discord, réservée au développement local")
 
     @model_validator(mode="after")

@@ -25,9 +25,11 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from syncron_core import APP_NAME
 from syncron_server.config import Settings
 from syncron_server.deps import SessionDep, SettingsDep, UserDep, get_discord
 from syncron_server.discord import DiscordError, DiscordProvider, DiscordUser
+from syncron_server.messaging import post_message
 from syncron_server.models import LoginCode, RefreshToken, Role, User, utcnow
 from syncron_server.schemas import DevLoginRequest, RefreshRequest, TokenPair, TokenRequest, UserOut
 from syncron_server.security import (
@@ -39,6 +41,7 @@ from syncron_server.security import (
     new_secret_token,
     verify_pkce,
 )
+from syncron_server.systems import ACCOUNTS, SYSTEMS, clean_permissions
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 LOGIN_CODE_TTL = timedelta(minutes=2)
@@ -182,6 +185,10 @@ async def dev_login(payload: DevLoginRequest, settings: SettingsDep, session: Se
     )
     user = await upsert_user(session, settings, profile)
     user.role = payload.role.value
+    if payload.permissions is not None:
+        user.permissions = clean_permissions(payload.permissions)
+    elif payload.role is Role.EDITOR:
+        user.permissions = list(SYSTEMS)
     return await issue_tokens(session, settings, user)
 
 
@@ -195,8 +202,15 @@ async def me(user: UserDep) -> UserOut:
 
 async def upsert_user(session: AsyncSession, settings: Settings, profile: DiscordUser) -> User:
     user = (await session.execute(select(User).where(User.discord_id == profile.id))).scalar_one_or_none()
+    created = user is None
     if user is None:
-        user = User(discord_id=profile.id, username=profile.username, role=Role.PLAYER.value, created_at=utcnow())
+        user = User(
+            discord_id=profile.id,
+            username=profile.username,
+            role=Role.PLAYER.value,
+            permissions=[],
+            created_at=utcnow(),
+        )
         session.add(user)
     user.username = profile.username
     user.display_name = profile.global_name
@@ -206,7 +220,35 @@ async def upsert_user(session: AsyncSession, settings: Settings, profile: Discor
         user.role = Role.ADMIN.value
         user.is_banned = False
     await session.flush()
+    if created:
+        await _welcome(session, settings, user)
     return user
+
+
+async def _welcome(session: AsyncSession, settings: Settings, user: User) -> None:
+    country = settings.nation_name or "notre pays"
+    await post_message(
+        session,
+        system=ACCOUNTS,
+        title=f"Bienvenue sur {APP_NAME}",
+        body=(
+            f"{APP_NAME} rassemble les outils internes de {country} : Craft, R&D, Calendrier et Convertisseur.\n"
+            "Les annonces de l'équipe et les nouvelles du pays arrivent ici, dans ta messagerie."
+        ),
+        audience="direct",
+        recipients=[user.id],
+    )
+    await post_message(
+        session,
+        system=ACCOUNTS,
+        title=f"Nouveau compte : {profile_name(user)}",
+        body="Un membre vient de se connecter pour la première fois.",
+        audience="staff",
+    )
+
+
+def profile_name(user: User) -> str:
+    return user.display_name or user.username
 
 
 async def issue_tokens(session: AsyncSession, settings: Settings, user: User) -> TokenPair:

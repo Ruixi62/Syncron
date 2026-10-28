@@ -19,7 +19,7 @@ from syncron_client.ui import icons
 from syncron_client.ui.brand import logo_pixmap
 from syncron_client.ui.theme import COLORS
 from syncron_client.ui.widgets import Banner, Card, button, label, reserve_wrapped_height
-from syncron_core import APP_DISPLAY_NAME, APP_TAGLINE, __version__
+from syncron_core import APP_DISPLAY_NAME, APP_TAGLINE, __version__, tagline
 
 DISCORD_BLURPLE = "#5865f2"
 FORM_WIDTH = 380
@@ -48,15 +48,19 @@ class LoginWindow(QWidget):
         logo.setPixmap(logo_pixmap(120))
         logo.setFixedSize(120, 120)
         title = label(APP_DISPLAY_NAME, "display")
-        tagline = label(APP_TAGLINE + ".", "muted", wrap=True)
-        tagline.setMaximumWidth(340)
+        self._tagline = label(APP_TAGLINE + ".", "muted", wrap=True)
+        self._tagline.setMaximumWidth(340)
+        access = label("Accès réservé aux membres du pays, avec leur compte Discord.", "faint", wrap=True)
+        access.setMaximumWidth(340)
         brand_layout = QVBoxLayout(brand)
         brand_layout.setContentsMargins(48, 48, 48, 40)
         brand_layout.addStretch(1)
         brand_layout.addWidget(logo)
         brand_layout.addSpacing(18)
         brand_layout.addWidget(title)
-        brand_layout.addWidget(tagline)
+        brand_layout.addWidget(self._tagline)
+        brand_layout.addSpacing(6)
+        brand_layout.addWidget(access)
         brand_layout.addStretch(2)
         brand_layout.addWidget(label(f"Version {__version__}", "faint"))
 
@@ -87,7 +91,7 @@ class LoginWindow(QWidget):
         self._dev_user = QLineEdit()
         self._dev_user.setPlaceholderText("pseudo")
         self._dev_role = QComboBox()
-        for value, text in (("admin", "Administrateur"), ("editor", "Éditeur"), ("player", "Joueur")):
+        for value, text in (("admin", "Administrateur"), ("editor", "Éditeur"), ("player", "Membre")):
             self._dev_role.addItem(text, value)
         dev_go = button("Entrer", "arrow-right")
         dev_go.clicked.connect(
@@ -111,7 +115,7 @@ class LoginWindow(QWidget):
         self.set_server(server_url)
 
         heading = label("Connexion", "title")
-        intro = label("Connecte-toi avec ton compte Discord pour accéder à Syncron.", "muted", wrap=True)
+        intro = label("Connecte-toi avec le compte Discord que tu utilises sur le serveur du pays.", "muted", wrap=True)
         reserve_wrapped_height(intro, FORM_WIDTH)
         form = QWidget()
         form.setFixedWidth(FORM_WIDTH)
@@ -144,6 +148,9 @@ class LoginWindow(QWidget):
         layout.addWidget(right, 6)
 
     # -- états ---------------------------------------------------------------------
+
+    def set_nation(self, nation_name: str) -> None:
+        self._tagline.setText(tagline(nation_name) + ".")
 
     def set_server(self, url: str) -> None:
         self._server.setText(f"Serveur : {url}")

@@ -1,25 +1,34 @@
-# Syncron 4
+# Syncron 4.1
 
-La boîte à outils des joueurs NationsGlory : un **logiciel téléchargeable** (Windows, Linux, macOS) connecté à une **API hébergée**. La connexion se fait avec **Discord**, et un **mode admin** permet de gérer le catalogue en ligne.
+Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargeable** (Windows, Linux, macOS) réservé aux membres du pays, connecté à une **API hébergée**. La connexion se fait avec **Discord** (limitée au serveur Discord du pays), et une **administration découpée par système** permet à l'équipe de tout tenir à jour.
+
+| Outil | Pour qui | Ce qu'il fait |
+|---|---|---|
+| **Messagerie** | tous | annonces de l'équipe et nouvelles du pays, avec notifications |
+| **Craft** | tous | ressources, étapes, ateliers, prérequis et temps de fabrication (calcul local, hors ligne possible) |
+| **R&D** | tous | les cinq domaines (global, militaire, ressources, industrie, technologie), leurs paliers, conditions, récompenses et l'avancement du pays |
+| **Calendrier** | tous | réunions, guerres, événements, économie, en vue mensuelle |
+| **Convertisseur** | tous | une quantité en stacks (64), lignes (576), coffres (1 728) et doubles coffres (3 456) |
+| **Administration** | éditeurs, admins | une section par système, plus les comptes et le journal |
 
 ```
-┌──────────────────────┐      HTTPS / JSON       ┌────────────────────────┐      ┌────────────┐
-│ Client PySide6       │ ──────────────────────▶ │ API FastAPI            │ ───▶ │ PostgreSQL │
-│ • Craft (hors ligne) │  OAuth2 Discord + PKCE  │ • auth, rôles, jetons  │      └────────────┘
-│ • Administration     │ ◀────────────────────── │ • catalogue validé     │      ┌────────────┐
-│ • cache local        │   ETag, images /media   │ • images, journal      │ ───▶ │ /media     │
-└──────────────────────┘                         └────────────────────────┘      └────────────┘
+┌──────────────────────────┐      HTTPS / JSON       ┌───────────────────────────┐      ┌────────────┐
+│ Client PySide6           │ ──────────────────────▶ │ API FastAPI               │ ───▶ │ PostgreSQL │
+│ • outils du pays         │  OAuth2 Discord + PKCE  │ • comptes, rôles, droits  │      └────────────┘
+│ • notifications          │ ◀────────────────────── │ • craft, R&D, calendrier  │      ┌────────────┐
+│ • cache hors ligne       │   ETag, images /media   │ • messagerie, journal     │ ───▶ │ /media     │
+└──────────────────────────┘                         └───────────────────────────┘      └────────────┘
                                   Caddy (HTTPS automatique) devant l'API
 ```
 
 | Dossier | Contenu |
 |---|---|
-| `src/syncron_core/` | Métier partagé, sans dépendance : modèles, moteur de calcul, validation, format JSON, exports |
-| `src/syncron_server/` | API : FastAPI, SQLAlchemy 2 async, Alembic, Discord OAuth2, JWT, mode admin |
-| `src/syncron_client/` | Client de bureau : connexion, session, cache, plateforme d'outils, Craft, Administration |
+| `src/syncron_core/` | Métier partagé, sans dépendance : modèles, moteur de calcul, validation, format JSON, exports, convertisseur |
+| `src/syncron_server/` | API : FastAPI, SQLAlchemy 2 async, Alembic, Discord OAuth2, JWT, un routeur par système |
+| `src/syncron_client/` | Client de bureau : connexion, session, notifications, plateforme d'outils, un paquet par outil |
 | `deploy/` | Dockerfile, docker-compose (PostgreSQL + API + Caddy), `.env.example`, sauvegardes, catalogue d'exemple |
-| `tests/` | 108 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
-| `docs/` | `DEPLOIEMENT.md` (mise en ligne pas à pas) et `ARCHITECTURE.md` |
+| `tests/` | 152 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
+| `docs/` | `DEPLOIEMENT.md` (mise en ligne, passage 4.0 → 4.1) et `ARCHITECTURE.md` (systèmes, ajouter un outil) |
 
 ## Démarrage rapide (développement)
 
@@ -41,11 +50,13 @@ ruff check . && ruff format --check .
 
 ## Production
 
-Voir [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) : application Discord, `docker compose up -d --build`, build du client avec `python build_client.py --server-url https://…`, rôles, mises à jour, sauvegardes.
+Voir [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) : application Discord, `docker compose up -d --build`, build du client avec `python build_client.py --server-url https://…`, rôles et systèmes confiés, mises à jour, sauvegardes.
 
-## Ce qui a changé par rapport à la version 3 (locale)
+## Nouveautés de la 4.1
 
-- Les données de jeu sont sur le serveur : tout le monde voit le même catalogue, mis à jour instantanément par les éditeurs.
-- On ne remplit plus les JSON à la main : on passe par le mode admin. Il comprend des éditeurs (objets, recettes, ateliers, compétences, images), un tableau de bord, la gestion des comptes, le journal des modifications et l'import / export JSON (même format qu'avant).
-- Le calcul de craft reste local et instantané. Il fonctionne aussi **hors ligne** sur le dernier catalogue reçu.
-- L'API expose aussi `POST /api/v1/craft/plan`, réutilisable par d'autres intégrations (un bot Discord, par exemple).
+- Textes revus : Syncron est l'outil interne **du pays** (nom configurable avec `SYNCRON_NATION_NAME`), le rôle de base s'appelle **Membre**.
+- **Calendrier** et **R&D** opérationnels ; nouvel outil **Convertisseur** (les quantités du Craft affichent aussi leur équivalent en contenants au survol).
+- **Messagerie et notifications** : cloche avec compteur, bulles, notifications du bureau ; tous les systèmes peuvent y publier.
+- **Administration par système** : chaque outil apporte ses écrans ; les éditeurs ne gèrent que les systèmes qui leur sont confiés ; vue d'ensemble et journal par système.
+- Accueil épuré : plus de barre de recherche, plus de carte Administration (elle reste dans « Gestion »).
+- « À compléter » du Craft : la ligne « Recettes sans temps de fabrication » disparaît (sans temps = instantané).

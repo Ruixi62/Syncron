@@ -5,13 +5,17 @@ Découplé de la fenêtre par des signaux : un outil ne touche jamais au shell.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from PySide6.QtCore import QObject, Signal
 
 from syncron_client.api.client import ApiClient
 from syncron_client.api.errors import ApiError, NetworkError, SessionExpired
 from syncron_client.catalog_store import CatalogStore
+from syncron_client.notifications import NotificationCenter
 from syncron_client.paths import AppPaths, ToolPaths
-from syncron_client.platform.tool import NotifyLevel
+from syncron_client.platform.registry import ToolRegistry
+from syncron_client.platform.tool import NotifyLevel, Tool
 from syncron_client.session import Session
 from syncron_client.tasks import TaskRunner
 
@@ -28,6 +32,8 @@ class ShellHost(QObject):
         session: Session,
         runner: TaskRunner,
         catalog: CatalogStore,
+        notifications: NotificationCenter,
+        registry: ToolRegistry,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -36,6 +42,8 @@ class ShellHost(QObject):
         self._session = session
         self._runner = runner
         self._catalog = catalog
+        self._notifications = notifications
+        self._registry = registry
 
     @property
     def app_paths(self) -> AppPaths:
@@ -56,6 +64,13 @@ class ShellHost(QObject):
     @property
     def catalog(self) -> CatalogStore:
         return self._catalog
+
+    @property
+    def notifications(self) -> NotificationCenter:
+        return self._notifications
+
+    def tools(self) -> Sequence[Tool]:
+        return self._registry.all()
 
     def tool_paths(self, tool_id: str) -> ToolPaths:
         return self._paths.for_tool(tool_id)

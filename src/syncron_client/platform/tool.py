@@ -9,9 +9,12 @@ Cycle de vie, piloté par le shell :
     shutdown()       à la fermeture : sauvegarde de l'état
 
 Points d'intégration optionnels (méthodes à redéfinir si utiles) :
-    page_actions()   boutons affichés dans la barre du haut quand l'outil est actif
-    status()         pastille dans la barre latérale (ex. erreurs de données)
-    search()/open()  résultats dans la recherche globale (Ctrl+K)
+    page_actions()    boutons affichés dans la barre du haut quand l'outil est actif
+    status()          pastille dans la barre latérale (ex. messages non lus)
+    search()/open()   résultats dans la recherche globale (Ctrl+K) ; open() sert aussi aux liens
+                      des messages (« ouvrir l'événement »…)
+    admin_sections()  écrans de gestion du système, regroupés sous son nom dans l'Administration
+                      et visibles des comptes qui gèrent `ToolInfo.system`
 """
 
 from __future__ import annotations
@@ -30,14 +33,26 @@ from syncron_client.paths import AppPaths, ToolPaths
 if TYPE_CHECKING:
     from syncron_client.api.client import ApiClient
     from syncron_client.catalog_store import CatalogStore
+    from syncron_client.notifications import NotificationCenter
+    from syncron_client.platform.admin import AdminSection
     from syncron_client.session import Session
     from syncron_client.tasks import TaskRunner
 
 
 class StatusLevel(StrEnum):
     OK = "ok"
+    INFO = "info"
     WARNING = "warning"
     ERROR = "error"
+
+
+class Placement(StrEnum):
+    """Place dans la barre latérale. TOOLS : section « Outils » et cartes de l'accueil ;
+    MAIN : sous l'accueil (messagerie) ; MANAGE : section « Gestion »."""
+
+    MAIN = "main"
+    TOOLS = "tools"
+    MANAGE = "manage"
 
 
 class ToolStage(StrEnum):
@@ -64,6 +79,8 @@ class ToolInfo:
     stage: ToolStage = ToolStage.AVAILABLE
     roadmap: tuple[str, ...] = ()
     min_role: str | None = None
+    placement: Placement = Placement.TOOLS
+    system: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +117,11 @@ class ToolHost(Protocol):
     @property
     def catalog(self) -> CatalogStore: ...
 
+    @property
+    def notifications(self) -> NotificationCenter: ...
+
+    def tools(self) -> Sequence[Tool]: ...
+
     def handle_error(self, error: Exception, context: str = "") -> None: ...
 
     def tool_paths(self, tool_id: str) -> ToolPaths: ...
@@ -135,7 +157,10 @@ class Tool(ABC):
         return ()
 
     def open(self, key: str) -> None:
-        """Affiche l'élément `key` d'un SearchHit. La page existe déjà."""
+        """Affiche l'élément `key` (SearchHit, lien d'un message). La page existe déjà."""
+
+    def admin_sections(self) -> Sequence[AdminSection]:
+        return ()
 
     def activated(self) -> None:
         """L'outil devient visible."""

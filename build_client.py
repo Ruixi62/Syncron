@@ -1,7 +1,7 @@
 """Construit le client téléchargeable : `python build_client.py --server-url https://api.mondomaine.fr`
 
 Produit dist/Syncron/ (Syncron.exe sous Windows) avec syncron.json, qui fixe
-l'adresse du serveur pour tous les joueurs. PyInstaller ne fait pas de
+l'adresse du serveur pour tous les membres du pays. PyInstaller ne fait pas de
 compilation croisée : construire sous Windows pour un .exe.
 """
 

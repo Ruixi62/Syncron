@@ -1,4 +1,4 @@
-"""Barre du haut : titre de la page, actions de l'outil actif, recherche globale."""
+"""Barre du haut : titre de la page, actions de l'outil actif, recherche globale, notifications."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QToolButton, QVBoxLayout, QWidget
 
 from syncron_client.ui import icons
 from syncron_client.ui.theme import COLORS
@@ -19,6 +19,7 @@ COMPACT_WIDTH = 1180
 class TopBar(QFrame):
     searchRequested = Signal()
     retryRequested = Signal()
+    notificationsRequested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -49,12 +50,25 @@ class TopBar(QFrame):
         self._offline.clicked.connect(self.retryRequested)
         self._offline.hide()
 
-        search = QPushButton("  Rechercher partout…        Ctrl K")
-        search.setObjectName("SearchLauncher")
-        search.setIcon(icons.icon("search", COLORS.text_faint, 15))
-        search.setIconSize(QSize(15, 15))
-        search.setCursor(Qt.CursorShape.PointingHandCursor)
-        search.clicked.connect(self.searchRequested)
+        self._search = QPushButton("  Rechercher partout…        Ctrl K")
+        self._search.setObjectName("SearchLauncher")
+        self._search.setIcon(icons.icon("search", COLORS.text_faint, 15))
+        self._search.setIconSize(QSize(15, 15))
+        self._search.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._search.clicked.connect(self.searchRequested)
+
+        self._bell = QToolButton()
+        self._bell.setProperty("variant", "icon")
+        self._bell.setIcon(icons.icon("bell", COLORS.text_muted, 19))
+        self._bell.setIconSize(QSize(19, 19))
+        self._bell.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._bell.setToolTip("Messagerie")
+        self._bell.clicked.connect(self.notificationsRequested)
+        self._bell_badge = QLabel(self._bell)
+        self._bell_badge.setObjectName("NavBadge")
+        self._bell_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._bell_badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._bell_badge.hide()
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 0, 20, 0)
@@ -63,7 +77,33 @@ class TopBar(QFrame):
         layout.addLayout(self._actions)
         layout.addSpacing(8)
         layout.addWidget(self._offline)
-        layout.addWidget(search)
+        layout.addWidget(self._search)
+        layout.addWidget(self._bell)
+
+    def set_search_visible(self, visible: bool) -> None:
+        self._search.setVisible(visible)
+
+    def search_visible(self) -> bool:
+        return not self._search.isHidden()
+
+    def set_unread(self, count: int) -> None:
+        self._bell.setToolTip(f"Messagerie · {count} non lu(s)" if count else "Messagerie")
+        if count <= 0:
+            self._bell_badge.hide()
+            return
+        self._bell_badge.setText("99+" if count > 99 else str(count))
+        self._bell_badge.adjustSize()
+        self._bell_badge.setMinimumWidth(self._bell_badge.height())
+        self._bell_badge.adjustSize()
+        self._bell_badge.move(self._bell.width() - self._bell_badge.width() + 2, -2)
+        self._bell_badge.show()
+        self._bell_badge.raise_()
+
+    def unread_text(self) -> str:
+        return self._bell_badge.text() if not self._bell_badge.isHidden() else ""
+
+    def set_notifications_available(self, available: bool) -> None:
+        self._bell.setVisible(available)
 
     def set_offline(self, offline: bool) -> None:
         self._offline.setVisible(offline)

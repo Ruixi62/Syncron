@@ -1,24 +1,28 @@
-"""Fenêtre principale de la plateforme : navigation entre l'accueil, les outils et les paramètres."""
+"""Fenêtre principale de la plateforme : navigation entre l'accueil, les outils et les paramètres,
+notifications (cloche, bulles, notifications du bureau)."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import QByteArray, Qt, Signal
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QResizeEvent
-from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget
 
 from syncron_client.platform.registry import ToolRegistry
-from syncron_client.platform.tool import NotifyLevel, ToolStage
+from syncron_client.platform.tool import NotifyLevel, Placement, ToolStage
 from syncron_client.settings import JsonSettingsStore
 from syncron_client.shell.command_palette import CommandPalette
 from syncron_client.shell.home_page import HomePage
 from syncron_client.shell.host import ShellHost
-from syncron_client.shell.settings_page import SettingsPage
+from syncron_client.shell.settings_page import DESKTOP_NOTIFICATIONS_KEY, SettingsPage
 from syncron_client.shell.sidebar import HOME_ID, SETTINGS_ID, Sidebar
 from syncron_client.shell.toast import Toast
 from syncron_client.shell.top_bar import TopBar
+from syncron_client.ui.brand import app_icon
 from syncron_core import APP_DISPLAY_NAME
 
 MIN_SIZE = (1120, 720)
+MAILBOX_ID = "mailbox"
+SIDEBAR_ORDER = (Placement.MAIN, Placement.TOOLS, Placement.MANAGE)
 
 
 class ShellWindow(QMainWindow):
@@ -53,18 +57,19 @@ class ShellWindow(QMainWindow):
         layout.addWidget(right, 1)
         self.setCentralWidget(central)
 
-        self._home = HomePage(registry)
+        self._home = HomePage(registry, host)
         self._add_page(HOME_ID, self._home)
         self._settings_page = SettingsPage(host, registry, settings)
         self._add_page(SETTINGS_ID, self._settings_page)
-        for tool in registry:
+        for tool in self._ordered_tools():
             planned = tool.info.stage is ToolStage.PLANNED
-            manage = tool.info.min_role is not None
-            self._sidebar.add_tool(tool.info.id, tool.info.name, tool.info.icon, planned, manage)
+            self._sidebar.add_tool(tool.info.id, tool.info.name, tool.info.icon, planned, tool.info.placement)
             self._sidebar.set_status(tool.info.id, tool.status())
 
         self._toast = Toast(self)
         self._palette = CommandPalette(registry, self)
+        self._tray: QSystemTrayIcon | None = None
+        self._top_bar.set_notifications_available(MAILBOX_ID in registry and host.session.user is not None)
 
         self._sidebar.navigate.connect(self.show_page)
         self._home.openRequested.connect(self.show_page)
@@ -76,6 +81,9 @@ class ShellWindow(QMainWindow):
         self._sidebar.account.logoutRequested.connect(self.logoutRequested)
         self._settings_page.logoutRequested.connect(self.logoutRequested)
         self._top_bar.retryRequested.connect(self.retry_connection)
+        self._top_bar.notificationsRequested.connect(lambda: self.show_page(MAILBOX_ID))
+        host.notifications.unreadChanged.connect(self._top_bar.set_unread)
+        host.notifications.received.connect(self._on_messages_received)
         host.session.onlineChanged.connect(self._on_online_changed)
         self._install_shortcuts()
         self._refresh_account()
@@ -104,10 +112,11 @@ class ShellWindow(QMainWindow):
             tool.activated()
         elif page_id == HOME_ID:
             self._home.refresh()
-            self._top_bar.set_page("Accueil", "Vue d'ensemble de tes outils")
+            self._top_bar.set_page("Accueil", "Les outils du pays")
         else:
             self._settings_page.refresh()
             self._top_bar.set_page("Paramètres", "Compte, serveur, stockage local, à propos")
+        self._top_bar.set_search_visible(page_id != HOME_ID)
         self._stack.setCurrentWidget(self._pages[page_id])
         self._sidebar.set_current(page_id)
         self._current = page_id
@@ -130,6 +139,9 @@ class ShellWindow(QMainWindow):
             host.session.set_user(_user)
             host.session.set_online(True)
             host.catalog.sync()
+            current = self._registry.get(self._current) if self._current in self._registry else None
+            if current is not None:
+                current.activated()
             host.notify("Connexion rétablie.", NotifyLevel.SUCCESS)
 
         def failed(error: Exception) -> None:
@@ -157,7 +169,40 @@ class ShellWindow(QMainWindow):
     def toast(self) -> Toast:
         return self._toast
 
+    # -- notifications -------------------------------------------------------------
+
+    def _on_messages_received(self, messages: list) -> None:
+        if len(messages) == 1:
+            text = f"Nouveau message : {messages[0]['title']}"
+        else:
+            text = f"{len(messages)} nouveaux messages dans ta messagerie."
+        self._toast.show_message(text, NotifyLevel.INFO)
+        if not self.isActiveWindow() and self._settings.get(DESKTOP_NOTIFICATIONS_KEY, True) is not False:
+            tray = self._desktop_tray()
+            if tray is not None:
+                body = messages[0].get("body", "") if len(messages) == 1 else text
+                tray.showMessage(messages[0]["title"] if len(messages) == 1 else APP_DISPLAY_NAME, body[:240])
+
+    def _desktop_tray(self) -> QSystemTrayIcon | None:
+        """Icône de notification du système, créée au premier besoin (absente sur certains bureaux Linux)."""
+        if self._tray is None and QSystemTrayIcon.isSystemTrayAvailable():
+            self._tray = QSystemTrayIcon(app_icon(), self)
+            self._tray.setToolTip(APP_DISPLAY_NAME)
+            self._tray.messageClicked.connect(self._bring_to_mailbox)
+            self._tray.activated.connect(lambda _reason: self._bring_to_mailbox())
+            self._tray.show()
+        return self._tray
+
+    def _bring_to_mailbox(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        self.show_page(MAILBOX_ID)
+
     # -- interne -----------------------------------------------------------------
+
+    def _ordered_tools(self) -> list:
+        return sorted(self._registry, key=lambda tool: SIDEBAR_ORDER.index(tool.info.placement))
 
     def _add_page(self, page_id: str, page: QWidget) -> None:
         self._pages[page_id] = page
@@ -191,7 +236,7 @@ class ShellWindow(QMainWindow):
         search.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         search.triggered.connect(self.open_search)
         self.addAction(search)
-        targets = [HOME_ID, *(tool.info.id for tool in self._registry)]
+        targets = [HOME_ID, *(tool.info.id for tool in self._ordered_tools())]
         for index, page_id in enumerate(targets[:9]):
             jump = QAction(self)
             jump.setShortcut(QKeySequence(f"Ctrl+{index + 1}"))
@@ -212,6 +257,8 @@ class ShellWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         for tool in self._registry:
             tool.shutdown()
+        if self._tray is not None:
+            self._tray.hide()
         self._settings.set("window_geometry", bytes(self.saveGeometry().toHex()).decode("ascii"))
         self._settings.set("last_page", self._current or HOME_ID)
         try:

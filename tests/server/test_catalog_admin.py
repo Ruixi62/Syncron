@@ -8,7 +8,7 @@ from syncron_core.catalog_format import parse_catalog
 
 from ..sample import sample_document
 
-ITEM = "/api/v1/admin/items"
+ITEM = "/api/v1/admin/craft/items"
 
 
 def png_bytes(color=(200, 50, 50, 255), size=(16, 16)) -> bytes:
@@ -18,13 +18,13 @@ def png_bytes(color=(200, 50, 50, 255), size=(16, 16)) -> bytes:
 
 
 async def test_import_dry_run_then_apply(client, editor):
-    dry = await client.post("/api/v1/admin/import", json=sample_document(), headers=editor)
+    dry = await client.post("/api/v1/admin/craft/import", json=sample_document(), headers=editor)
     assert dry.status_code == 200
     body = dry.json()
     assert body["dry_run"] and not body["applied"] and len(body["items"]["added"]) == 15 and body["revision"] == 0
-    applied = await client.post("/api/v1/admin/import?dry_run=false", json=sample_document(), headers=editor)
+    applied = await client.post("/api/v1/admin/craft/import?dry_run=false", json=sample_document(), headers=editor)
     assert applied.json()["applied"] and applied.json()["revision"] == 1
-    again = await client.post("/api/v1/admin/import?dry_run=false", json=sample_document(), headers=editor)
+    again = await client.post("/api/v1/admin/craft/import?dry_run=false", json=sample_document(), headers=editor)
     assert not again.json()["applied"] and again.json()["items"]["unchanged"] == 15 and again.json()["revision"] == 1
 
 
@@ -105,9 +105,9 @@ async def test_invalid_writes_are_rejected_with_issues(client, seeded, editor):
 async def test_deleting_used_entities_is_refused_with_explanation(client, seeded, editor):
     used = await client.delete(f"{ITEM}/vis", headers=editor)
     assert used.status_code == 409 and "Support" in used.json()["detail"] and "Cadre" in used.json()["detail"]
-    station = await client.delete("/api/v1/admin/stations/atelier_energie", headers=editor)
+    station = await client.delete("/api/v1/admin/craft/stations/atelier_energie", headers=editor)
     assert station.status_code == 409 and "Machine X" in station.json()["detail"]
-    skill = await client.delete("/api/v1/admin/skills/ingenieur", headers=editor)
+    skill = await client.delete("/api/v1/admin/craft/skills/ingenieur", headers=editor)
     assert skill.status_code == 409
     free = await client.delete(f"{ITEM}/chassis", headers=editor)
     assert free.status_code == 200
@@ -126,10 +126,12 @@ async def test_switching_raw_to_crafted_and_back(client, seeded, editor):
 
 
 async def test_stations_and_skills_crud(client, seeded, editor):
-    assert (await client.put("/api/v1/admin/stations/four", json={"name": "Four"}, headers=editor)).status_code == 200
+    assert (
+        await client.put("/api/v1/admin/craft/stations/four", json={"name": "Four"}, headers=editor)
+    ).status_code == 200
     assert (
         await client.put(
-            "/api/v1/admin/skills/pilote", json={"name": "Pilote", "kind": "job", "max_level": 5}, headers=editor
+            "/api/v1/admin/craft/skills/pilote", json={"name": "Pilote", "kind": "job", "max_level": 5}, headers=editor
         )
     ).status_code == 200
     item = await client.put(
@@ -145,7 +147,7 @@ async def test_stations_and_skills_crud(client, seeded, editor):
     )
     assert item.status_code == 200
     lowered = await client.put(
-        "/api/v1/admin/skills/pilote", json={"name": "Pilote", "kind": "job", "max_level": 1}, headers=editor
+        "/api/v1/admin/craft/skills/pilote", json={"name": "Pilote", "kind": "job", "max_level": 1}, headers=editor
     )
     assert lowered.status_code == 422
 
@@ -190,36 +192,30 @@ async def test_import_replace_is_admin_only_and_removes(client, seeded, editor, 
     document = sample_document()
     for item_id in ("chassis", "support", "cadre"):
         del document["items"][item_id]
-    forbidden = await client.post("/api/v1/admin/import?mode=replace&dry_run=false", json=document, headers=editor)
+    forbidden = await client.post(
+        "/api/v1/admin/craft/import?mode=replace&dry_run=false", json=document, headers=editor
+    )
     assert forbidden.status_code == 403
-    result = await client.post("/api/v1/admin/import?mode=replace&dry_run=false", json=document, headers=admin)
+    result = await client.post("/api/v1/admin/craft/import?mode=replace&dry_run=false", json=document, headers=admin)
     assert sorted(result.json()["items"]["removed"]) == ["cadre", "chassis", "support"]
 
 
 async def test_import_rejects_invalid_files_and_strips_local_images(client, seeded, editor):
     broken = sample_document()
     broken["items"]["x"] = {"type": "crafted", "recipe": {"inexistant": 1}}
-    refused = await client.post("/api/v1/admin/import?dry_run=false", json=broken, headers=editor)
+    refused = await client.post("/api/v1/admin/craft/import?dry_run=false", json=broken, headers=editor)
     assert refused.status_code == 422 and refused.json()["issues"][0]["entity_id"] == "x"
     local = sample_document()
     local["items"]["quartz"]["image"] = "minerais/quartz.png"
-    report = await client.post("/api/v1/admin/import?dry_run=false", json=local, headers=editor)
+    report = await client.post("/api/v1/admin/craft/import?dry_run=false", json=local, headers=editor)
     assert report.status_code == 200 and "image" in report.json()["warnings"][0]["message"]
 
 
 async def test_export_is_reimportable(client, seeded, editor):
-    exported = await client.get("/api/v1/admin/export", headers=editor)
+    exported = await client.get("/api/v1/admin/craft/export", headers=editor)
     assert "attachment" in exported.headers["content-disposition"]
-    dry = (await client.post("/api/v1/admin/import", json=exported.json(), headers=editor)).json()
+    dry = (await client.post("/api/v1/admin/craft/import", json=exported.json(), headers=editor)).json()
     assert dry["items"]["unchanged"] == 15 and not dry["items"]["updated"] and not dry["items"]["added"]
-
-
-async def test_dashboard(client, seeded, editor, player):
-    board = (await client.get("/api/v1/admin/dashboard", headers=editor)).json()
-    assert board["items_total"] == 15 and board["items_crafted"] == 9 and board["stations"] == 3
-    assert board["users_by_role"]["editor"] == 1 and board["users_by_role"]["player"] == 1
-    assert board["items_without_image"] == 15 and board["recent"][0]["action"] == "catalog.import"
-    assert (await client.get("/api/v1/admin/dashboard", headers=player)).status_code == 403
 
 
 async def test_user_management(client, editor, admin, player):
@@ -238,4 +234,4 @@ async def test_user_management(client, editor, admin, player):
     search = (await client.get("/api/v1/admin/users?q=jou", headers=admin)).json()
     assert [u["username"] for u in search] == ["joueur"]
     log = (await client.get("/api/v1/admin/audit", headers=admin)).json()
-    assert "suspendu" in log[0]["summary"]
+    assert "suspendu" in log[0]["summary"] and log[0]["system"] == "accounts"

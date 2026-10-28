@@ -60,6 +60,9 @@ async def database_url():
     await admin.close()
     url = ADMIN_URL.rsplit("/", 1)[0] + f"/{name}"
     await upgrade_async(url)
+    connection = await asyncpg.connect(_asyncpg_dsn(url))
+    await connection.execute("create table research_seed as select * from research_categories")
+    await connection.close()
     yield url
     admin = await asyncpg.connect(_asyncpg_dsn(ADMIN_URL))
     await admin.execute(f'drop database if exists "{name}" with (force)')
@@ -88,9 +91,11 @@ async def database(settings):
         await connection.execute(
             text(
                 "truncate audit_log, recipe_ingredients, item_requirements, items, stations, skills, "
-                "login_codes, refresh_tokens, users restart identity cascade"
+                "login_codes, refresh_tokens, users, message_receipts, messages, calendar_events, "
+                "research_lines, research_tiers, research_categories restart identity cascade"
             )
         )
+        await connection.execute(text("insert into research_categories select * from research_seed"))
         await connection.execute(text("update catalog_state set revision = 0, updated_at = now()"))
     yield db
     await db.dispose()
@@ -134,6 +139,6 @@ async def player(client) -> dict[str, str]:
 async def seeded(client, editor):
     from ..sample import sample_document
 
-    response = await client.post("/api/v1/admin/import?dry_run=false", json=sample_document(), headers=editor)
+    response = await client.post("/api/v1/admin/craft/import?dry_run=false", json=sample_document(), headers=editor)
     assert response.status_code == 200, response.text
     return response.json()

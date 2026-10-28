@@ -19,6 +19,7 @@ from syncron_core.exporters.json_exporter import JsonExporter
 from syncron_server.catalog_store import get_state, load_catalog
 from syncron_server.deps import SessionDep, SettingsDep, UserDep
 from syncron_server.schemas import CraftPlanRequest, MetaOut
+from syncron_server.systems import SYSTEMS
 
 router = APIRouter(prefix="/api/v1", tags=["catalogue"])
 
@@ -65,6 +66,8 @@ async def meta(request: Request, settings: SettingsDep, session: SessionDep) -> 
         catalog_revision=state.revision,
         discord_login=bool(settings.discord_client_id),
         dev_login=settings.dev_login,
+        nation_name=settings.nation_name,
+        systems=SYSTEMS,
     )
 
 

@@ -1,4 +1,4 @@
-"""Barre latérale : marque, accueil, outils, gestion (rôles éditeur/admin), paramètres, compte."""
+"""Barre latérale : marque, accueil et messagerie, outils, gestion (éditeurs et admins), paramètres, compte."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from PySide6.QtCore import QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QToolButton, QVBoxLayout, QWidget
 
-from syncron_client.platform.tool import StatusLevel, ToolStatus
+from syncron_client.platform.tool import Placement, StatusLevel, ToolStatus
 from syncron_client.ui import icons
 from syncron_client.ui.brand import logo_pixmap
 from syncron_client.ui.theme import COLORS
@@ -48,13 +48,18 @@ class NavButton(QPushButton):
             self._badge.hide()
             self.setToolTip(status.message)
             return
-        color = COLORS.danger if status.level is StatusLevel.ERROR else COLORS.warning
-        self._badge.setStyleSheet(f"background: {color};")
+        colors = {StatusLevel.ERROR: COLORS.danger, StatusLevel.WARNING: COLORS.warning}
+        color = colors.get(status.level, COLORS.accent)
+        text_color = COLORS.accent_text if status.level is StatusLevel.INFO else "white"
+        self._badge.setStyleSheet(f"background: {color}; color: {text_color};")
         self._badge.setText(status.badge)
         self._badge.adjustSize()
         self._badge.show()
         self.setToolTip(status.message)
         self._place_badge()
+
+    def badge_text(self) -> str:
+        return self._badge.text() if not self._badge.isHidden() else ""
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -159,6 +164,8 @@ class Sidebar(QFrame):
         brand.addWidget(logo)
         brand.addLayout(brand_text, 1)
 
+        self._main_layout = QVBoxLayout()
+        self._main_layout.setSpacing(2)
         self._tools_layout = QVBoxLayout()
         self._tools_layout.setSpacing(2)
         self._manage_layout = QVBoxLayout()
@@ -173,7 +180,8 @@ class Sidebar(QFrame):
         layout.setSpacing(4)
         layout.addLayout(brand)
         layout.addSpacing(18)
-        layout.addWidget(self._add_button(HOME_ID, "Accueil", "home"))
+        self._main_layout.addWidget(self._add_button(HOME_ID, "Accueil", "home"))
+        layout.addLayout(self._main_layout)
         layout.addSpacing(14)
         tools_title = label("OUTILS", "overline")
         tools_title.setContentsMargins(12, 0, 0, 4)
@@ -187,15 +195,23 @@ class Sidebar(QFrame):
         layout.addSpacing(8)
         layout.addWidget(self.account)
 
-    def add_tool(self, tool_id: str, name: str, icon_name: str, planned: bool = False, manage: bool = False) -> None:
+    def add_tool(
+        self, tool_id: str, name: str, icon_name: str, planned: bool = False, placement: Placement = Placement.TOOLS
+    ) -> None:
         button = self._add_button(tool_id, name, icon_name)
         if planned:
             button.set_planned()
-        if manage:
+        if placement is Placement.MANAGE:
             self._manage_title.show()
             self._manage_layout.addWidget(button)
+        elif placement is Placement.MAIN:
+            self._main_layout.addWidget(button)
         else:
             self._tools_layout.addWidget(button)
+
+    def badge_text(self, page_id: str) -> str:
+        button = self._buttons.get(page_id)
+        return button.badge_text() if button is not None else ""
 
     def set_current(self, page_id: str) -> None:
         button = self._buttons.get(page_id)

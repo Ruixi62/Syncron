@@ -9,6 +9,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -68,10 +69,11 @@ class ApiClient:
         )
         return self._apply_token_pair(response.json())
 
-    def dev_login(self, username: str, role: str = "player") -> dict[str, Any]:
-        response = self._request(
-            "POST", "/api/v1/auth/dev-login", json={"username": username, "role": role}, auth=False
-        )
+    def dev_login(self, username: str, role: str = "player", permissions: list[str] | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"username": username, "role": role}
+        if permissions is not None:
+            body["permissions"] = permissions
+        response = self._request("POST", "/api/v1/auth/dev-login", json=body, auth=False)
         return self._apply_token_pair(response.json())
 
     def resume(self, refresh_token: str) -> dict[str, Any]:
@@ -111,45 +113,115 @@ class ApiClient:
     def download(self, url: str) -> bytes:
         return self._request("GET", url, auth=False).content
 
-    # -- administration ------------------------------------------------------------------
+    # -- administration générale -------------------------------------------------------
 
-    def dashboard(self) -> dict[str, Any]:
-        return self._request("GET", "/api/v1/admin/dashboard").json()
+    def overview(self) -> dict[str, Any]:
+        return self._json("GET", "/api/v1/admin/overview")
+
+    def audit(self, limit: int = 50, before: int | None = None, system: str | None = None) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"limit": limit}
+        if before is not None:
+            params["before"] = before
+        if system:
+            params["system"] = system
+        return self._json("GET", "/api/v1/admin/audit", params=params)
+
+    def users(self, query: str = "") -> list[dict[str, Any]]:
+        return self._json("GET", "/api/v1/admin/users", params={"q": query})
+
+    def patch_user(self, user_id: str, **changes: Any) -> dict[str, Any]:
+        return self._json("PATCH", f"/api/v1/admin/users/{user_id}", json=changes)
+
+    # -- craft (gestion) -------------------------------------------------------------------
 
     def put_entity(self, section: str, entity_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return self._request("PUT", f"/api/v1/admin/{section}/{entity_id}", json=payload).json()
+        return self._json("PUT", f"/api/v1/admin/craft/{section}/{entity_id}", json=payload)
 
     def delete_entity(self, section: str, entity_id: str) -> dict[str, Any]:
-        return self._request("DELETE", f"/api/v1/admin/{section}/{entity_id}").json()
+        return self._json("DELETE", f"/api/v1/admin/craft/{section}/{entity_id}")
 
     def put_image(self, section: str, entity_id: str, path: Path) -> dict[str, Any]:
         with path.open("rb") as handle:
             files = {"file": (path.name, handle.read(), "application/octet-stream")}
-        return self._request("PUT", f"/api/v1/admin/{section}/{entity_id}/image", files=files).json()
+        return self._json("PUT", f"/api/v1/admin/craft/{section}/{entity_id}/image", files=files)
 
     def delete_image(self, section: str, entity_id: str) -> dict[str, Any]:
-        return self._request("DELETE", f"/api/v1/admin/{section}/{entity_id}/image").json()
+        return self._json("DELETE", f"/api/v1/admin/craft/{section}/{entity_id}/image")
 
     def export_catalog(self) -> bytes:
-        return self._request("GET", "/api/v1/admin/export").content
+        return self._request("GET", "/api/v1/admin/craft/export").content
 
     def import_catalog(self, document: dict[str, Any], mode: str, dry_run: bool) -> dict[str, Any]:
         params = {"mode": mode, "dry_run": "true" if dry_run else "false"}
-        return self._request("POST", "/api/v1/admin/import", params=params, json=document).json()
+        return self._json("POST", "/api/v1/admin/craft/import", params=params, json=document)
 
-    def audit(self, limit: int = 50, before: int | None = None) -> list[dict[str, Any]]:
-        params: dict[str, Any] = {"limit": limit}
+    # -- R&D -------------------------------------------------------------------------------
+
+    def research(self) -> dict[str, Any]:
+        return self._json("GET", "/api/v1/research")
+
+    def put_research_category(self, category_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._json("PUT", f"/api/v1/admin/research/categories/{category_id}", json=payload)
+
+    def put_research_tier(self, category_id: str, level: int, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._json("PUT", f"/api/v1/admin/research/categories/{category_id}/tiers/{level}", json=payload)
+
+    def delete_research_category(self, category_id: str) -> None:
+        self._request("DELETE", f"/api/v1/admin/research/categories/{category_id}")
+
+    # -- calendrier ---------------------------------------------------------------------------
+
+    def events(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        params = {"start": start.isoformat(), "end": end.isoformat()}
+        return self._json("GET", "/api/v1/calendar/events", params=params)
+
+    def event(self, event_id: str) -> dict[str, Any]:
+        return self._json("GET", f"/api/v1/calendar/events/{event_id}")
+
+    def create_event(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._json("POST", "/api/v1/admin/calendar/events", json=payload, expected=(201,))
+
+    def update_event(self, event_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._json("PUT", f"/api/v1/admin/calendar/events/{event_id}", json=payload)
+
+    def delete_event(self, event_id: str, notify: bool = False) -> None:
+        params = {"notify": "true" if notify else "false"}
+        self._request("DELETE", f"/api/v1/admin/calendar/events/{event_id}", params=params)
+
+    # -- messagerie --------------------------------------------------------------------------
+
+    def inbox(self, limit: int = 50, before: int | None = None, unread_only: bool = False) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"limit": limit, "unread_only": "true" if unread_only else "false"}
         if before is not None:
             params["before"] = before
-        return self._request("GET", "/api/v1/admin/audit", params=params).json()
+        return self._json("GET", "/api/v1/inbox", params=params)
 
-    def users(self, query: str = "") -> list[dict[str, Any]]:
-        return self._request("GET", "/api/v1/admin/users", params={"q": query}).json()
+    def inbox_summary(self) -> dict[str, Any]:
+        return self._json("GET", "/api/v1/inbox/summary")
 
-    def patch_user(self, user_id: str, **changes: Any) -> dict[str, Any]:
-        return self._request("PATCH", f"/api/v1/admin/users/{user_id}", json=changes).json()
+    def mark_read(self, ids: list[int] | None = None) -> dict[str, Any]:
+        body = {"all": True} if ids is None else {"ids": ids}
+        return self._json("POST", "/api/v1/inbox/read", json=body)
+
+    def delete_message(self, message_id: int) -> dict[str, Any]:
+        return self._json("DELETE", f"/api/v1/inbox/{message_id}")
+
+    def announce(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._json("POST", "/api/v1/admin/messages", json=payload, expected=(201,))
+
+    def recipients(self) -> list[dict[str, Any]]:
+        return self._json("GET", "/api/v1/admin/messages/recipients")
+
+    def sent_messages(self, limit: int = 50) -> list[dict[str, Any]]:
+        return self._json("GET", "/api/v1/admin/messages", params={"limit": limit})
+
+    def retract_message(self, message_id: int) -> None:
+        self._request("DELETE", f"/api/v1/admin/messages/{message_id}")
 
     # -- transport -------------------------------------------------------------------------
+
+    def _json(self, method: str, url: str, **kwargs: Any) -> Any:
+        return self._request(method, url, **kwargs).json()
 
     def _request(
         self, method: str, url: str, auth: bool = True, expected: tuple[int, ...] = (200, 204), **kwargs: Any

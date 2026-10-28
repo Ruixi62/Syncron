@@ -12,7 +12,9 @@ from pathlib import Path
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import QApplication
 
-FONTS_DIR = Path(__file__).resolve().parent / "assets" / "fonts"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+FONTS_DIR = ASSETS_DIR / "fonts"
+CHECK_IMAGE = (ASSETS_DIR / "check.svg").as_posix()
 FONT_FAMILY = "Inter"
 FALLBACK_FAMILIES = ["Segoe UI Variable Text", "Segoe UI", "Ubuntu", "Cantarell", "Helvetica Neue", "Arial"]
 
@@ -182,12 +184,32 @@ QPushButton#Segment:hover {{ color: {c.text}; }}
 QPushButton#Segment:checked {{ background: {c.surface_hover}; color: {c.text}; font-weight: 600; }}
 
 /* ---------- Champs ---------- */
-QLineEdit, QSpinBox, QComboBox {{
+QLineEdit, QSpinBox, QComboBox, QDateEdit, QTimeEdit, QPlainTextEdit, QTextEdit {{
     background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 9px;
     padding: 7px 10px; selection-background-color: {c.accent}; selection-color: {c.accent_text};
 }}
-QLineEdit:hover, QSpinBox:hover, QComboBox:hover {{ border-color: {c.border_strong}; }}
-QLineEdit:focus, QSpinBox:focus, QComboBox:focus {{ border-color: {c.accent}; }}
+QPlainTextEdit, QTextEdit {{ padding: 6px 8px; }}
+QLineEdit:hover, QSpinBox:hover, QComboBox:hover, QDateEdit:hover, QTimeEdit:hover,
+QPlainTextEdit:hover, QTextEdit:hover {{ border-color: {c.border_strong}; }}
+QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QDateEdit:focus, QTimeEdit:focus,
+QPlainTextEdit:focus, QTextEdit:focus {{ border-color: {c.accent}; }}
+QLineEdit:read-only {{ color: {c.text_muted}; }}
+QDateEdit::drop-down {{ border: none; width: 22px; }}
+QDateEdit::up-button, QDateEdit::down-button, QTimeEdit::up-button, QTimeEdit::down-button {{ width: 0; border: none; }}
+QCalendarWidget QWidget {{ alternate-background-color: {c.surface}; }}
+QCalendarWidget QToolButton {{ border: none; background: transparent; padding: 4px 8px; }}
+QCalendarWidget QAbstractItemView {{ selection-background-color: {c.accent}; selection-color: {c.accent_text}; }}
+QCheckBox {{ spacing: 8px; }}
+QCheckBox::indicator {{ width: 16px; height: 16px; border-radius: 5px; border: 1px solid {c.border_strong};
+                        background: {c.surface_alt}; }}
+QCheckBox::indicator:hover {{ border-color: {c.text_faint}; }}
+QCheckBox::indicator:checked {{ background: {c.accent}; border-color: {c.accent}; image: url("{CHECK_IMAGE}"); }}
+QCheckBox::indicator:disabled {{ background: {c.surface}; border-color: {c.border}; }}
+QProgressBar {{ background: {c.surface_alt}; border: none; border-radius: 4px; max-height: 8px; min-height: 8px;
+                text-align: center; color: transparent; }}
+QProgressBar::chunk {{ background: {c.accent}; border-radius: 4px; }}
+QListWidget::item:hover {{ background: {c.surface_alt}; }}
+QListWidget::item:selected {{ background: {c.surface_hover}; color: {c.text}; }}
 QLineEdit[size="large"] {{ font-size: 15px; padding: 11px 12px; border-radius: 11px; }}
 QSpinBox {{ padding: 4px 8px; }}
 QSpinBox#Quantity {{ font-size: 15px; font-weight: 600; }}

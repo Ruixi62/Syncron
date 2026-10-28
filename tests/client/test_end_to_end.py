@@ -22,19 +22,23 @@ def sign_in(launcher, username="patron", role="admin"):
 
 
 def import_sample(shell, tmp_path):
-    page = _admin_page(shell)
+    transfer = admin_section(shell, "craft.transfer")
     path = tmp_path / "catalogue.json"
     path.write_text(json.dumps(sample_document()), encoding="utf-8")
-    page.transfer.load_file(path)
-    page.transfer._run(dry_run=True)
-    assert "rien n'a été écrit" in page.transfer.report_text
-    page.transfer._run(dry_run=False)
-    assert "Import appliqué" in page.transfer.report_text
+    transfer.load_file(path)
+    transfer._run(dry_run=True)
+    assert "rien n'a été écrit" in transfer.report_text
+    transfer._run(dry_run=False)
+    assert "Import appliqué" in transfer.report_text
 
 
-def _admin_page(shell):
+def admin_page(shell):
     shell.window.show_page("admin")
     return shell.registry.get("admin").page
+
+
+def admin_section(shell, key, item=None):
+    return admin_page(shell).show_section(key, item)
 
 
 def test_login_screen_offers_dev_login_and_blocks_old_clients(make_launcher, server):
@@ -62,12 +66,13 @@ def test_admin_imports_then_craft_calculates(make_launcher, tmp_path):
 def test_player_has_no_admin_tool(make_launcher):
     shell = sign_in(make_launcher(), "joueur", "player")
     assert "admin" not in shell.registry and "craft" in shell.registry
+    assert shell.host.session.role.label == "Membre"
 
 
 def test_item_editor_creates_and_refuses_invalid_recipes(make_launcher, tmp_path):
     shell = sign_in(make_launcher())
     import_sample(shell, tmp_path)
-    editor = _admin_page(shell).items
+    editor = admin_section(shell, "craft.items")
     editor.load(None)
     editor.name_field.setText("Plaque de fer")
     editor.id_field.setText("plaque_fer")
@@ -92,8 +97,7 @@ def test_item_editor_creates_and_refuses_invalid_recipes(make_launcher, tmp_path
 def test_deleting_used_station_shows_reason(make_launcher, tmp_path):
     shell = sign_in(make_launcher())
     import_sample(shell, tmp_path)
-    stations = _admin_page(shell).stations
-    stations.load("atelier_energie")
+    stations = admin_section(shell, "craft.stations", "atelier_energie")
     assert "Machine X" in stations.usage.text()
     stations.ctx.call(lambda: stations.ctx.api.delete_entity("stations", "atelier_energie"), banner=stations.banner)
     assert "Machine X" in stations.banner.text()
@@ -102,8 +106,7 @@ def test_deleting_used_station_shows_reason(make_launcher, tmp_path):
 def test_image_upload_reaches_client_cache(make_launcher, tmp_path):
     shell = sign_in(make_launcher())
     import_sample(shell, tmp_path)
-    editor = _admin_page(shell).items
-    editor.load("quartz")
+    editor = admin_section(shell, "craft.items", "quartz")
     image = tmp_path / "quartz.png"
     buffer = io.BytesIO()
     Image.new("RGBA", (16, 16), (240, 230, 220, 255)).save(buffer, format="PNG")
@@ -117,23 +120,28 @@ def test_users_management_and_audit(make_launcher, server, tmp_path):
     other = make_launcher(user_dir=tmp_path / "other")
     sign_in(other, "recrue", "player")
     shell = sign_in(make_launcher())
-    page = _admin_page(shell)
-    page.segments.set_current_index(4)
-    users = page.users.users()
-    recrue = next(u for u in users if u["username"] == "recrue")
-    page.users._patch(recrue, role="editor")
-    assert next(u for u in page.users.users() if u["username"] == "recrue")["role"] == "editor"
-    page.segments.set_current_index(5)
-    assert "recrue" in page.audit.entries()[0]["summary"]
-    page.segments.set_current_index(0)
-    assert page.dashboard._tiles["users"]._value.full_text() == "2"
+    users = admin_section(shell, "admin.users")
+    recrue = next(u for u in users.users() if u["username"] == "recrue")
+    users.patch(recrue, role="editor")
+    recrue = next(u for u in users.users() if u["username"] == "recrue")
+    assert recrue["role"] == "editor" and recrue["permissions"] == []
+    users.patch(recrue, permissions=["calendar"])
+    assert next(u for u in users.users() if u["username"] == "recrue")["permissions"] == ["calendar"]
+    audit = admin_section(shell, "admin.audit")
+    assert "recrue" in audit.entries()[0]["summary"] and audit.entries()[0]["system"] == "accounts"
+    audit.set_system("craft")
+    assert audit.entries() == []
+    overview = admin_section(shell, "admin.overview")
+    assert "2 compte(s)" in overview.accounts_text.text()
+    assert list(overview.cards) == ["craft", "research", "calendar", "messages"]
+    assert "Recettes sans temps de fabrication" not in overview.cards["craft"].todo
 
 
 def test_export_writes_reimportable_file(make_launcher, tmp_path):
     shell = sign_in(make_launcher())
     import_sample(shell, tmp_path)
     target = tmp_path / "export.json"
-    _admin_page(shell).transfer.export_to(target)
+    admin_section(shell, "craft.transfer").export_to(target)
     assert set(json.loads(target.read_text(encoding="utf-8"))["items"]) == set(sample_document()["items"])
 
 
@@ -214,8 +222,7 @@ def test_relogin_in_same_session_does_not_touch_closed_pages(make_launcher, tmp_
     shell.window.open_in_tool("craft", "vis")
     launcher.logout()
     shell = sign_in(launcher, "patron", "admin")
-    editor = _admin_page(shell).items
-    editor.load("quartz")
+    editor = admin_section(shell, "craft.items", "quartz")
     editor.name_field.setText("Quartz pur")
     editor._save()
     assert next(i for i in launcher.catalog.data.items if i.id == "quartz").name == "Quartz pur"

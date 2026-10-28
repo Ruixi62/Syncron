@@ -43,6 +43,7 @@ from syncron_server.models import (
     Station,
     utcnow,
 )
+from syncron_server.systems import CRAFT
 
 STATE_ID = 1
 SOURCE = "base"
@@ -231,6 +232,7 @@ async def write_catalog(
     session.add(
         AuditEntry(
             user_id=user_id,
+            system=CRAFT,
             action=audit.action,
             entity_type=audit.entity_type,
             entity_id=audit.entity_id,

@@ -78,6 +78,28 @@ ICONS: dict[str, str] = {
     '<path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M8 14h8"/>',
     "sparkles": '<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><path d="m6 6 2 2M16 16l2 2M6 18l2-2M16 8l2-2"/>',
     "edit": '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+    "bell": '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+    "mail": '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/>',
+    "inbox": '<path d="M3 13h5l1.5 3h5L16 13h5"/><path d="M5.5 5h13L21 13v6H3v-6z"/>',
+    "megaphone": '<path d="M4 10v4h3l8 4V6L7 10z"/><path d="M18 9.5a3.5 3.5 0 0 1 0 5"/>'
+    '<path d="M7 14l1 5h2.5l-1-4.5"/>',
+    "convert": '<path d="M4 8h14l-3.5-3.5"/><path d="M20 16H6l3.5 3.5"/>',
+    "chevron-left": '<path d="m15 6-6 6 6 6"/>',
+    "globe": '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/>',
+    "sword": '<path d="M14.5 3H21v6.5L10 20.5 3.5 14z"/><path d="m6 17-3 3M8 13l3 3"/>',
+    "pickaxe": '<path d="M4 7.5C8 3.5 14 3 19.5 4.5 21 10 20.5 16 16.5 20"/><path d="m14 10-10 10"/>',
+    "cpu": '<rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5"/>'
+    '<path d="M9 2.5V6M15 2.5V6M9 18v3.5M15 18v3.5M2.5 9H6M2.5 15H6M18 9h3.5M18 15h3.5"/>',
+    "flag": '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
+    "gift": '<rect x="3.5" y="8" width="17" height="4" rx="1"/><path d="M5 12v8h14v-8M12 8v12"/>'
+    '<path d="M12 8C10.5 4.5 7 4 7 6.2S10 8 12 8zM12 8c1.5-3.5 5-4 5-1.8S14 8 12 8z"/>',
+    "map-pin": '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+    "check-circle": '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+    "circle": '<circle cx="12" cy="12" r="9"/>',
+    "play": '<circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/>',
+    "lock": '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    "today": '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'
+    '<rect x="10" y="13" width="4" height="4" rx="1"/>',
 }
 
 _SVG = (

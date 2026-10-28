@@ -41,6 +41,7 @@ class LiveServer:
         asyncio.run(self._sql(f'create database "{self.db_name}"'))
         self.database_url = ADMIN_URL.rsplit("/", 1)[0] + f"/{self.db_name}"
         upgrade(self.database_url)
+        asyncio.run(self._sql("create table research_seed as select * from research_categories", self.db_name))
         self.port = _free_port()
         self.url = f"http://127.0.0.1:{self.port}"
         self.discord = FakeDiscord()
@@ -78,12 +79,15 @@ class LiveServer:
         asyncio.run(
             self._sql(
                 "truncate audit_log, recipe_ingredients, item_requirements, items, stations, skills, "
-                "login_codes, refresh_tokens, users restart identity cascade; "
+                "login_codes, refresh_tokens, users, message_receipts, messages, calendar_events, "
+                "research_lines, research_tiers, research_categories restart identity cascade; "
+                "insert into research_categories select * from research_seed; "
                 "update catalog_state set revision = 0, updated_at = now();",
                 self.db_name,
             )
         )
-        self.settings.min_client_version = "4.0.0"
+        self.settings.min_client_version = "4.1.0"
+        self.settings.nation_name = ""
 
     def stop(self) -> None:
         self.server.should_exit = True

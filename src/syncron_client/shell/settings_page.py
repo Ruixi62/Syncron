@@ -1,4 +1,4 @@
-"""Paramètres : compte, serveur, stockage local, outils, à propos."""
+"""Paramètres : compte, notifications, serveur, stockage local, outils, à propos."""
 
 from __future__ import annotations
 
@@ -6,14 +6,16 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QScrollArea, QVBoxLayout, QWidget
 
 from syncron_client.config import SERVER_URL_KEY
 from syncron_client.platform.registry import ToolRegistry
-from syncron_client.platform.tool import NotifyLevel, ToolHost, ToolStage
+from syncron_client.platform.tool import NotifyLevel, Placement, ToolHost, ToolStage
 from syncron_client.settings import JsonSettingsStore
 from syncron_client.ui.widgets import Card, Chip, button, divider, label
 from syncron_core import APP_DISPLAY_NAME, __version__
+
+DESKTOP_NOTIFICATIONS_KEY = "desktop_notifications"
 
 
 class SettingsPage(QScrollArea):
@@ -43,6 +45,21 @@ class SettingsPage(QScrollArea):
         row.addWidget(logout)
         account.body.addLayout(row)
 
+        notifications = Card(padding=20, spacing=12)
+        notifications.body.addWidget(label("NOTIFICATIONS", "overline"))
+        notifications.body.addWidget(
+            label(
+                "Annonces de l'équipe, événements du calendrier, avancées de la R&D : chaque nouveau message "
+                "s'affiche dans Syncron et rejoint ta messagerie.",
+                "muted",
+                wrap=True,
+            )
+        )
+        self.desktop_notifications = QCheckBox("Prévenir aussi sur le bureau quand Syncron est en arrière-plan")
+        self.desktop_notifications.setChecked(settings.get(DESKTOP_NOTIFICATIONS_KEY, True) is not False)
+        self.desktop_notifications.toggled.connect(self._toggle_desktop)
+        notifications.body.addWidget(self.desktop_notifications)
+
         server = Card(padding=20, spacing=12)
         server.body.addWidget(label("SERVEUR", "overline"))
         server.body.addWidget(
@@ -67,8 +84,8 @@ class SettingsPage(QScrollArea):
         storage.body.addWidget(label("STOCKAGE LOCAL", "overline"))
         storage.body.addWidget(
             label(
-                "Tes préférences et une copie du catalogue (pour démarrer vite et consulter hors ligne) "
-                "sont gardées sur ce PC. Les données de jeu, elles, sont sur le serveur.",
+                "Tes préférences et une copie des dernières données reçues (pour démarrer vite et consulter "
+                "hors ligne) sont gardées sur ce PC. Les données du pays, elles, sont sur le serveur.",
                 "muted",
                 wrap=True,
             )
@@ -81,7 +98,7 @@ class SettingsPage(QScrollArea):
         cache_row = QHBoxLayout()
         cache_texts = QVBoxLayout()
         cache_texts.setSpacing(2)
-        cache_texts.addWidget(label("Cache du catalogue et des images", "heading"))
+        cache_texts.addWidget(label("Cache des données et des images", "heading"))
         cache_texts.addWidget(self._cache_info)
         cache_row.addLayout(cache_texts, 1)
         cache_row.addWidget(clear)
@@ -89,7 +106,7 @@ class SettingsPage(QScrollArea):
 
         tools = Card(padding=20, spacing=12)
         tools.body.addWidget(label("OUTILS", "overline"))
-        for tool in registry:
+        for tool in (t for t in registry if t.info.placement is Placement.TOOLS):
             tool_row = QHBoxLayout()
             tool_texts = QVBoxLayout()
             tool_texts.setSpacing(2)
@@ -105,9 +122,11 @@ class SettingsPage(QScrollArea):
         about = Card(flat=True, padding=20, spacing=6)
         about.body.addWidget(label("À PROPOS", "overline"))
         about.body.addWidget(label(f"{APP_DISPLAY_NAME} {__version__}", "heading"))
+        nation = host.session.nation_name
         about.body.addWidget(
             label(
-                "Connexion avec Discord : Syncron ne reçoit que ton identifiant, ton pseudo et ton avatar.",
+                f"Logiciel interne de {nation or 'notre pays'}, réservé à ses membres. Connexion avec Discord : "
+                "Syncron ne reçoit que ton identifiant, ton pseudo et ton avatar.",
                 "muted",
                 wrap=True,
             )
@@ -118,7 +137,7 @@ class SettingsPage(QScrollArea):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(24, 20, 24, 24)
         layout.setSpacing(16)
-        for card in (account, server, storage, tools, about):
+        for card in (account, notifications, server, storage, tools, about):
             layout.addWidget(card)
         layout.addStretch(1)
         wrapper = QWidget()
@@ -138,11 +157,18 @@ class SettingsPage(QScrollArea):
         online = "en ligne" if session.online else "hors ligne"
         revision = self._host.catalog.revision
         self._server_status.set_content(
-            f"{online} · catalogue révision {revision if revision >= 0 else '—'}",
+            f"{online} · catalogue Craft révision {revision if revision >= 0 else '—'}",
             "success" if session.online else "warning",
             "check" if session.online else "wifi-off",
         )
         self._cache_info.setText(f"{_folder_size(self._host.app_paths.cache_dir) // 1024} Ko")
+
+    def _toggle_desktop(self, enabled: bool) -> None:
+        self._settings.set(DESKTOP_NOTIFICATIONS_KEY, enabled)
+        try:
+            self._settings.save()
+        except OSError:
+            self._host.notify("Préférence non enregistrée.", NotifyLevel.ERROR)
 
     def _apply_server(self) -> None:
         url = self._server_url.text().strip().rstrip("/")

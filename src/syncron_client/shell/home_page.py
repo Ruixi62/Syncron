@@ -1,4 +1,8 @@
-"""Accueil : présentation et carte de chaque outil (description, état)."""
+"""Accueil : présentation et carte de chaque outil du pays (description, état).
+
+L'administration et la messagerie n'y figurent pas : elles ont leur place
+dans la barre latérale (et la cloche, pour la messagerie).
+"""
 
 from __future__ import annotations
 
@@ -6,14 +10,14 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from syncron_client.platform.registry import ToolRegistry
-from syncron_client.platform.tool import StatusLevel, Tool, ToolStage
+from syncron_client.platform.tool import Placement, StatusLevel, Tool, ToolHost, ToolStage
 from syncron_client.ui import icons
 from syncron_client.ui.brand import logo_pixmap
 from syncron_client.ui.theme import COLORS
 from syncron_client.ui.widgets import Card, Chip, button, label
-from syncron_core import APP_DISPLAY_NAME, APP_TAGLINE
+from syncron_core import tagline
 
-TOOL_COLUMNS = 3
+TOOL_COLUMNS = 2
 
 
 class ToolCard(Card):
@@ -38,7 +42,7 @@ class ToolCard(Card):
         if planned:
             open_button = button("Voir le programme", "arrow-right")
         else:
-            open_button = button(f"Ouvrir {tool.info.name}", "arrow-right", "primary")
+            open_button = button(f"Ouvrir {tool.info.name}".replace("&", "&&"), "arrow-right", "primary")
         open_button.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         open_button.clicked.connect(lambda: self.openRequested.emit(tool.info.id))
 
@@ -57,7 +61,9 @@ class ToolCard(Card):
         if status.level is StatusLevel.ERROR:
             self._status.set_content(status.badge + " erreur(s)", "danger", "alert")
         elif status.level is StatusLevel.WARNING:
-            self._status.set_content("Avertissements", "warning", "info")
+            self._status.set_content(status.message or "Avertissements", "warning", "info")
+        elif status.level is StatusLevel.INFO and status.message:
+            self._status.set_content(status.message, "accent", "info")
         else:
             self._status.set_content("Prêt", "success", "check")
 
@@ -65,9 +71,10 @@ class ToolCard(Card):
 class HomePage(QScrollArea):
     openRequested = Signal(str)
 
-    def __init__(self, registry: ToolRegistry, parent: QWidget | None = None) -> None:
+    def __init__(self, registry: ToolRegistry, host: ToolHost, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWidgetResizable(True)
+        self._host = host
         self._cards: dict[str, ToolCard] = {}
 
         hero = Card(padding=28, spacing=0)
@@ -78,11 +85,14 @@ class HomePage(QScrollArea):
         logo = QLabel()
         logo.setFixedSize(76, 76)
         logo.setPixmap(logo_pixmap(76))
+        self._greeting = label("", "overline")
+        self._title = label("", "display")
+        self._intro = label("", "muted", wrap=True)
         texts = QVBoxLayout()
         texts.setSpacing(4)
-        texts.addWidget(label("BIENVENUE", "overline"))
-        texts.addWidget(label(APP_DISPLAY_NAME, "display"))
-        texts.addWidget(label(APP_TAGLINE + ". Tout fonctionne hors ligne, sur ta machine.", "muted", wrap=True))
+        texts.addWidget(self._greeting)
+        texts.addWidget(self._title)
+        texts.addWidget(self._intro)
         hero_row = QHBoxLayout()
         hero_row.setSpacing(22)
         hero_row.addWidget(logo, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -91,7 +101,8 @@ class HomePage(QScrollArea):
 
         grid = QGridLayout()
         grid.setSpacing(16)
-        for index, tool in enumerate(registry):
+        tools = [tool for tool in registry if tool.info.placement is Placement.TOOLS]
+        for index, tool in enumerate(tools):
             card = ToolCard(tool)
             card.openRequested.connect(self.openRequested)
             self._cards[tool.info.id] = card
@@ -108,8 +119,22 @@ class HomePage(QScrollArea):
         layout.addLayout(grid)
         layout.addStretch(1)
         self.setWidget(content)
+        self.refresh()
+
+    @property
+    def card_ids(self) -> list[str]:
+        return list(self._cards)
 
     def refresh(self, tool_id: str | None = None) -> None:
+        session = self._host.session
+        name = session.display_name if session.user else ""
+        self._greeting.setText(f"BIENVENUE, {name.upper()}" if name else "BIENVENUE")
+        self._title.setText(session.nation_name or "Syncron")
+        offline = "" if session.online else " Hors ligne : tu consultes les dernières données reçues."
+        self._intro.setText(
+            f"{tagline(session.nation_name)}. Les données sont partagées par tout le pays et tenues à jour "
+            f"par l'équipe.{offline}"
+        )
         for card_id, card in self._cards.items():
             if tool_id is None or card_id == tool_id:
                 card.refresh()

@@ -1,8 +1,10 @@
 """Intégration de l'outil Craft dans la plateforme.
 
-Le catalogue vient du serveur (CatalogStore, partagé avec le mode admin) ; le
-calcul est fait localement par le moteur de syncron_core : instantané, et
-disponible hors ligne sur le dernier catalogue reçu.
+Le catalogue vient du serveur (CatalogStore) ; le calcul est fait localement
+par le moteur de syncron_core : instantané, et disponible hors ligne sur le
+dernier catalogue reçu. La gestion du catalogue (objets, ateliers,
+compétences, import / export) est fournie à l'Administration par
+`admin_sections()`.
 """
 
 from __future__ import annotations
@@ -13,8 +15,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QWidget
 
+from syncron_client.platform.admin import AdminSection
 from syncron_client.platform.tool import NotifyLevel, SearchHit, Tool, ToolHost, ToolInfo
 from syncron_client.settings import JsonSettingsStore
+from syncron_client.tools.craft.admin import CraftAdmin
+from syncron_client.tools.craft.admin.context import CraftAdminContext
 from syncron_client.tools.craft.ui.craft_page import CraftPage
 from syncron_client.ui import icons
 from syncron_client.ui.item_icons import IconProvider
@@ -33,7 +38,8 @@ class CraftTool(Tool):
         name="Craft",
         description="Ressources, étapes, ateliers, prérequis et temps de fabrication.",
         icon="hammer",
-        version="4.0.0",
+        version="4.1.0",
+        system="craft",
     )
 
     def __init__(self) -> None:
@@ -47,6 +53,7 @@ class CraftTool(Tool):
         self._page: CraftPage | None = None
         self._actions: list[QAction] = []
         self._export_actions: list[QAction] = []
+        self._admin: CraftAdmin | None = None
 
     @property
     def info(self) -> ToolInfo:
@@ -59,6 +66,10 @@ class CraftTool(Tool):
     @property
     def page(self) -> CraftPage | None:
         return self._page
+
+    @property
+    def admin(self) -> CraftAdmin | None:
+        return self._admin
 
     # -- cycle de vie ------------------------------------------------------------
 
@@ -93,6 +104,11 @@ class CraftTool(Tool):
 
     # -- intégration plateforme --------------------------------------------------
 
+    def admin_sections(self) -> Sequence[AdminSection]:
+        if self._admin is None:
+            self._admin = CraftAdmin(CraftAdminContext(self._host))
+        return self._admin.sections()
+
     def page_actions(self) -> Sequence[QAction]:
         return [action for action in self._actions if action.text()]
 
@@ -123,12 +139,16 @@ class CraftTool(Tool):
         self._repository.replace(self._host.catalog.data)
         if self._page is not None:
             self._page.data_changed()
+        if self._admin is not None:
+            self._admin.data_changed()
 
     def _on_images_updated(self) -> None:
         if self._page is not None:
             self._page.images_changed()
         else:
             self._icons.clear()
+        if self._admin is not None:
+            self._admin.data_changed()
 
     def _build_actions(self, page: CraftPage) -> list[QAction]:
         def action(text: str, icon_name: str, slot, shortcut: str | None = None, tip: str = "") -> QAction:

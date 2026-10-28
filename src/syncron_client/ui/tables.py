@@ -9,6 +9,7 @@ from PySide6.QtGui import QColor, QFont, QIcon
 from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget, QTableWidgetItem
 
 from syncron_client.ui.theme import COLORS
+from syncron_core.converter import STACK, decompose
 from syncron_core.text import format_quantity
 
 KEY_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -71,6 +72,8 @@ def muted_cell(text: str, sort_key: str | int | None = None) -> SortableItem:
 def quantity_cell(value: int, *, strong: bool = False, tone: str | None = None) -> SortableItem:
     cell = SortableItem(format_quantity(value))
     cell.setData(SORT_ROLE, value)
+    if value >= STACK.size():
+        cell.setToolTip(f"{format_quantity(value)} = {decompose(value).text()}")
     cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     if strong:
         font = QFont(cell.font())

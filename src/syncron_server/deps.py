@@ -14,6 +14,7 @@ from syncron_server.config import Settings
 from syncron_server.discord import DiscordProvider
 from syncron_server.models import Role, User
 from syncron_server.security import TokenError, decode_access_token
+from syncron_server.systems import CALENDAR, CRAFT, MESSAGES, RESEARCH, SYSTEMS
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -72,3 +73,20 @@ def require(role: Role) -> Callable[[User], Coroutine[Any, Any, User]]:
 
 EditorDep = Annotated[User, Depends(require(Role.EDITOR))]
 AdminDep = Annotated[User, Depends(require(Role.ADMIN))]
+
+
+def manager(system: str) -> Callable[[User], Coroutine[Any, Any, User]]:
+    """Gestion d'un système : administrateur, ou éditeur à qui ce système a été confié."""
+
+    async def checker(user: UserDep) -> User:
+        if not user.can_manage(system):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"La gestion « {SYSTEMS[system]} » ne t'a pas été confiée.")
+        return user
+
+    return checker
+
+
+CraftManager = Annotated[User, Depends(manager(CRAFT))]
+ResearchManager = Annotated[User, Depends(manager(RESEARCH))]
+CalendarManager = Annotated[User, Depends(manager(CALENDAR))]
+MessagesManager = Annotated[User, Depends(manager(MESSAGES))]
