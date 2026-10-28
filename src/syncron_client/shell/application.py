@@ -18,6 +18,7 @@ from typing import Any
 from PySide6.QtCore import QLocale, QObject
 from PySide6.QtWidgets import QApplication
 
+from syncron_client import updater
 from syncron_client.api.client import ApiClient
 from syncron_client.api.discord_login import DiscordLoginFlow, LoginCancelled
 from syncron_client.api.errors import NetworkError
@@ -80,6 +81,7 @@ class Launcher(QObject):
         self.session.expired.connect(self._on_session_expired)
         self.shell: Shell | None = None
         self._flow: DiscordLoginFlow | None = None
+        self._minimum = "0"
         self._connect(resolve_server_url(self.settings))
         self.login = LoginWindow(self.api.base_url)
         self.login.discordRequested.connect(self.login_with_discord)
@@ -107,9 +109,33 @@ class Launcher(QObject):
         self.session.set_meta(meta)
         self.login.set_nation(self.session.nation_name)
         self.login.set_dev_login(bool(meta.get("dev_login")))
-        minimum = str(meta.get("min_client_version", "0"))
-        if version_tuple(__version__) < version_tuple(minimum):
-            self.login.show_update_required(minimum)
+        self._minimum = str(meta.get("min_client_version", "0"))
+        self.login.set_busy("Recherche de mises à jour…")
+        self.runner.run(updater.check_for_update, self._on_update_checked, lambda _error: self._after_update_check())
+
+    def _on_update_checked(self, info: updater.UpdateInfo | None) -> None:
+        if info is None:
+            self._after_update_check()
+            return
+        self.login.set_busy(f"Téléchargement de la version {info.version}…")
+        self.runner.run(
+            lambda: updater.download_and_stage(info),
+            self._install_update,
+            self._on_update_failed,
+        )
+
+    def _install_update(self, workdir) -> None:
+        self.login.set_busy("Installation de la mise à jour…")
+        updater.apply_and_restart(workdir)
+        QApplication.quit()
+
+    def _on_update_failed(self, error: Exception) -> None:
+        self.login.show_error(f"Mise à jour impossible : {error}")
+        self._after_update_check()
+
+    def _after_update_check(self) -> None:
+        if version_tuple(__version__) < version_tuple(self._minimum):
+            self.login.show_update_required(self._minimum)
             self.login.set_idle()
             return
         stored = self.tokens.load()

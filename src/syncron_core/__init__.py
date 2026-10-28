@@ -4,7 +4,7 @@ Utilisé à l'identique par le serveur (validation, calcul côté API) et par le
 client (calcul instantané et hors ligne sur le catalogue mis en cache).
 """
 
-__version__ = "4.1.0"
+__version__ = "4.2.0"
 APP_NAME = "Syncron"
 APP_DISPLAY_NAME = "Syncron"
 APP_TAGLINE = "Les outils internes de notre pays sur NationsGlory"
