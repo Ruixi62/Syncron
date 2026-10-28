@@ -56,7 +56,8 @@ jobs:
           pip install -e ".[client,server,dev]"
 
       - name: Executer les tests
-        run: python -m pytest
+        timeout-minutes: 15
+        run: python -m pytest -v -x --timeout=60
 
   build:
     needs: tests
