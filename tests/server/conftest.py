@@ -81,6 +81,7 @@ def settings(database_url, tmp_path) -> Settings:
         admin_discord_ids=ADMIN_DISCORD_ID,
         media_dir=tmp_path / "media",
         dev_login=True,
+        auth_rate_limit=0,
     )
 
 

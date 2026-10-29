@@ -15,14 +15,15 @@ from typing import Any
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QWidget
 
-from syncron_client.platform.admin import AdminSection, admin_link
+from syncron_client.platform.admin import AdminSection, admin_link, call_api
 from syncron_client.platform.tool import StatusLevel, Tool, ToolHost, ToolInfo, ToolStatus
 from syncron_client.tools.research.admin import ResearchAdmin
 from syncron_client.tools.research.model import Domain, parse_domains
-from syncron_client.tools.research.page import ResearchPage
+from syncron_client.tools.research.page import START, ResearchPage
 from syncron_client.ui import icons
 from syncron_client.ui.item_icons import IconProvider
 from syncron_client.ui.theme import COLORS
+from syncron_client.ui.widgets import ask
 from syncron_core.catalog import CraftRepository
 from syncron_core.catalog_service import CatalogService
 
@@ -36,7 +37,7 @@ class ResearchTool(Tool):
         name="R&D",
         description="Les cinq domaines de recherche du pays : paliers, conditions, récompenses et avancement.",
         icon="flask",
-        version="4.1.0",
+        version="4.3.0",
         system="research",
     )
 
@@ -80,6 +81,8 @@ class ResearchTool(Tool):
     def create_page(self) -> QWidget:
         self._page = ResearchPage(self._catalog, self._icons)
         self._page.manageRequested.connect(lambda key: self._host.open_tool("admin", admin_link(DOMAINS_SECTION, key)))
+        self._page.lineChanged.connect(self.update_line)
+        self._page.actionRequested.connect(self._confirm_action)
         self._page.set_editable(self._host.session.can_manage(self.info.system))
         self._page.set_domains(self._domains)
         refresh = QAction(icons.icon("refresh", COLORS.text_muted, 16), "Actualiser", self._page)
@@ -103,6 +106,53 @@ class ResearchTool(Tool):
 
         self._host.catalog.sync()
         self._host.runner.run(self._host.api.research, done, lambda error: self._host.handle_error(error, "R&D"))
+
+    def update_line(self, line_id: int, changes: dict) -> None:
+        """Condition cochée ou quantité réunie, enregistrée tout de suite."""
+        call_api(
+            self._host,
+            lambda: self._host.api.patch_research_line(line_id, **changes),
+            self._merge,
+            on_failed=lambda _error: self._apply(self._domains),
+        )
+
+    def run_action(self, domain_id: str, action: str, level: int) -> None:
+        """START : ce palier devient la recherche en cours ; COMPLETE : il est terminé. Le pays est prévenu."""
+        domain = next((d for d in self._domains if d.id == domain_id), None)
+        if domain is None:
+            return
+        payload = {**domain.to_api(), "notify": True}
+        if action == START:
+            payload["active"] = True
+        else:
+            payload.update(completed=level, active=False)
+
+        def done(raw: dict[str, Any]) -> None:
+            self._merge(raw)
+            self._host.notifications.poll()
+
+        success = f"Palier {level} lancé." if action == START else f"Palier {level} terminé."
+        call_api(self._host, lambda: self._host.api.put_research_category(domain_id, payload), done, success=success)
+
+    def _confirm_action(self, domain_id: str, action: str, level: int) -> None:
+        domain = next((d for d in self._domains if d.id == domain_id), None)
+        name = domain.name if domain else domain_id
+        if action == START:
+            question = f"Lancer la recherche « {name} », palier {level} ? Une autre recherche en cours serait arrêtée."
+        else:
+            question = f"Déclarer « {name} », palier {level}, terminé ? Le pays sera prévenu avec les récompenses."
+        if ask(self._page, "R&D", question):
+            self.run_action(domain_id, action, level)
+
+    def _merge(self, raw: dict[str, Any]) -> None:
+        """Remplace un domaine par sa version renvoyée par le serveur (les autres ne changent pas,
+        sauf une recherche en cours arrêtée ailleurs : on recharge tout dans ce cas)."""
+        updated = Domain.from_api(raw)
+        domains = [updated if d.id == updated.id else d for d in self._domains]
+        if updated.active and any(d.active and d.id != updated.id for d in domains):
+            self.refresh()
+            return
+        self._apply(domains)
 
     def open(self, key: str) -> None:
         """« militaire » ou « militaire:5 » (lien d'un message)."""

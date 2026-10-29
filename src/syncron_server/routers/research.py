@@ -25,6 +25,7 @@ from syncron_server.schemas import (
     ResearchCategoryOut,
     ResearchLineIn,
     ResearchLineOut,
+    ResearchLinePatch,
     ResearchOut,
     ResearchTierIn,
     ResearchTierOut,
@@ -43,7 +44,21 @@ async def _categories(session: AsyncSession) -> list[ResearchCategory]:
 
 
 def _line_out(line: ResearchLine) -> ResearchLineOut:
-    return ResearchLineOut(id=line.id, text=line.text, quantity=line.quantity, item_id=line.item_id, done=line.done)
+    return ResearchLineOut(
+        id=line.id,
+        text=line.text,
+        quantity=line.quantity,
+        progress=line.progress,
+        item_id=line.item_id,
+        done=line.done,
+    )
+
+
+def _is_done(kind: str, quantity: int | None, progress: int | None, done: bool) -> bool:
+    """Une récompense n'est jamais « faite » ; une condition chiffrée l'est dès que le compte est atteint."""
+    if kind != "condition":
+        return False
+    return done or (quantity is not None and progress is not None and progress >= quantity)
 
 
 def _tier_out(level: int, tier: ResearchTier | None) -> ResearchTierOut:
@@ -253,11 +268,27 @@ async def put_tier(
     await session.execute(
         statement.on_conflict_do_update(index_elements=[ResearchTier.category_id, ResearchTier.level], set_=values)
     )
-    await session.execute(
-        delete(ResearchLine).where(ResearchLine.category_id == category_id, ResearchLine.level == level)
-    )
+    existing = {
+        line.id: line
+        for line in (
+            await session.execute(
+                select(ResearchLine).where(ResearchLine.category_id == category_id, ResearchLine.level == level)
+            )
+        ).scalars()
+    }
+    kept: set[int] = set()
     for kind, lines in (("condition", payload.conditions), ("reward", payload.rewards)):
-        session.add_all(_line(category_id, level, kind, position, line) for position, line in enumerate(lines))
+        for position, data in enumerate(lines):
+            line = existing.get(data.id) if data.id is not None and data.id not in kept else None
+            if line is None:
+                line = ResearchLine(category_id=category_id, level=level)
+                session.add(line)
+            else:
+                kept.add(line.id)
+            _fill(line, kind, position, data)
+    removed = [line_id for line_id in existing if line_id not in kept]
+    if removed:
+        await session.execute(delete(ResearchLine).where(ResearchLine.id.in_(removed)))
     category.updated_at = utcnow()
     audit.record(
         session,
@@ -278,17 +309,71 @@ async def _reloaded(session: AsyncSession, category_id: str) -> ResearchCategory
     return (await session.execute(query)).scalar_one()
 
 
-def _line(category_id: str, level: int, kind: str, position: int, line: ResearchLineIn) -> ResearchLine:
-    return ResearchLine(
-        category_id=category_id,
-        level=level,
-        kind=kind,
-        position=position,
-        text=line.text,
-        quantity=line.quantity,
-        item_id=line.item_id,
-        done=line.done if kind == "condition" else False,
+def _fill(line: ResearchLine, kind: str, position: int, data: ResearchLineIn) -> None:
+    line.kind = kind
+    line.position = position
+    line.text = data.text
+    line.quantity = data.quantity
+    line.item_id = data.item_id
+    line.progress = data.progress if kind == "condition" else None
+    line.done = _is_done(kind, data.quantity, line.progress, data.done)
+
+
+@admin_router.patch("/lines/{line_id}", response_model=ResearchCategoryOut)
+async def patch_line(
+    line_id: int, payload: ResearchLinePatch, session: SessionDep, user: ResearchManager
+) -> ResearchCategoryOut:
+    """Coche une condition ou met à jour son compteur (380 / 1 000) sans rouvrir tout le palier."""
+    line = await session.get(ResearchLine, line_id, with_for_update=True)
+    if line is None or line.kind != "condition":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Condition introuvable.")
+    category = await _locked(session, line.category_id)
+    tier_lines = (
+        await session.execute(
+            select(ResearchLine).where(
+                ResearchLine.category_id == line.category_id,
+                ResearchLine.level == line.level,
+                ResearchLine.kind == "condition",
+            )
+        )
+    ).scalars()
+    conditions = list(tier_lines)
+    was_complete = all(c.done for c in conditions)
+    if payload.progress is not None:
+        if line.quantity is None:
+            raise HTTPException(422, "Cette condition n'a pas de quantité à suivre.")
+        line.progress = payload.progress
+        line.done = _is_done("condition", line.quantity, line.progress, payload.done or False)
+    if payload.done is not None and payload.progress is None:
+        line.done = payload.done
+    category.updated_at = utcnow()
+    label = line.text or line.item_id or "condition"
+    if line.quantity is not None and line.progress is not None:
+        state = f"{line.progress} / {line.quantity}"
+    else:
+        state = "remplie" if line.done else "à faire"
+    audit.record(
+        session,
+        user.id,
+        RESEARCH,
+        "research.progress",
+        "research",
+        f"{line.category_id}:{line.level}",
+        f"R&D {category.name}, palier {line.level} : {label} — {state}",
     )
+    if conditions and not was_complete and all(c.done for c in conditions):
+        await post_message(
+            session,
+            system=RESEARCH,
+            title=f"R&D {category.name}, palier {line.level} : toutes les conditions sont remplies",
+            body="Le palier peut être validé en jeu, puis marqué comme terminé dans Syncron.",
+            audience="staff",
+            link_tool=RESEARCH,
+            link_key=f"{line.category_id}:{line.level}",
+            author_id=user.id,
+        )
+    await session.commit()
+    return category_out(await _reloaded(session, line.category_id))
 
 
 @admin_router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)

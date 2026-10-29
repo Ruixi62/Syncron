@@ -25,10 +25,22 @@ LATEST_RELEASE_URL = "https://api.github.com/repos/Ruixi62/Syncron/releases/late
 ARCHIVE_NAME = "Syncron-windows.zip"
 EXE_NAME = "Syncron.exe"
 TIMEOUT = httpx.Timeout(30.0, connect=8.0)
+TRUSTED_HOSTS = frozenset(
+    {"api.github.com", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
+)
+MAX_ARCHIVE_BYTES = 400 * 1024 * 1024
+MAX_EXTRACTED_BYTES = 1024 * 1024 * 1024
 
 
 class UpdateError(Exception):
     pass
+
+
+def _check_url(url: str | httpx.URL) -> None:
+    """Téléchargements uniquement depuis GitHub, en HTTPS (redirections comprises)."""
+    parsed = httpx.URL(str(url))
+    if parsed.scheme != "https" or parsed.host not in TRUSTED_HOSTS:
+        raise UpdateError(f"Adresse de téléchargement refusée : {parsed.host}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +76,10 @@ def check_for_update() -> UpdateInfo | None:
     assets = {asset["name"]: asset["browser_download_url"] for asset in release.get("assets", [])}
     if ARCHIVE_NAME not in assets or f"{ARCHIVE_NAME}.sha256" not in assets:
         return None
+    _check_url(assets[ARCHIVE_NAME])
+    _check_url(assets[f"{ARCHIVE_NAME}.sha256"])
     checksum = httpx.get(assets[f"{ARCHIVE_NAME}.sha256"], timeout=TIMEOUT, follow_redirects=True)
+    _check_url(checksum.url)
     checksum.raise_for_status()
     return UpdateInfo(version, assets[ARCHIVE_NAME], checksum.text.split()[0].lower())
 
@@ -74,16 +89,29 @@ def download_and_stage(info: UpdateInfo) -> Path:
     workdir = Path(tempfile.mkdtemp(prefix="syncron-update-"))
     archive = workdir / ARCHIVE_NAME
     digest = hashlib.sha256()
+    _check_url(info.url)
+    size = 0
     with httpx.stream("GET", info.url, timeout=TIMEOUT, follow_redirects=True) as response:
+        _check_url(response.url)
         response.raise_for_status()
         with archive.open("wb") as handle:
             for chunk in response.iter_bytes(1 << 16):
+                size += len(chunk)
+                if size > MAX_ARCHIVE_BYTES:
+                    raise UpdateError("Archive anormalement volumineuse.")
                 handle.write(chunk)
                 digest.update(chunk)
     if digest.hexdigest() != info.sha256:
         raise UpdateError("Archive corrompue (somme de contrôle invalide).")
+    staged = (workdir / "staged").resolve()
     with zipfile.ZipFile(archive) as bundle:
-        bundle.extractall(workdir / "staged")
+        members = bundle.infolist()
+        if sum(member.file_size for member in members) > MAX_EXTRACTED_BYTES:
+            raise UpdateError("Archive invalide : contenu trop volumineux.")
+        for member in members:
+            if not (staged / member.filename).resolve().is_relative_to(staged):
+                raise UpdateError(f"Archive invalide : chemin interdit ({member.filename}).")
+        bundle.extractall(staged)
     archive.unlink()
     if not any((workdir / "staged").rglob(EXE_NAME)):
         raise UpdateError("Archive invalide : Syncron.exe introuvable.")

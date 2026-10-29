@@ -236,3 +236,110 @@ async def test_meta_exposes_systems_and_nation(client, settings):
     settings.nation_name = "Empire du Levant"
     meta = (await client.get("/api/v1/meta")).json()
     assert meta["nation_name"] == "Empire du Levant" and meta["systems"]["research"] == "R&D"
+
+
+# -- 4.3 : progression des conditions, récurrence -------------------------------------------
+
+
+async def test_condition_progress_is_tracked_and_kept_when_the_tier_is_edited(client, seeded, editor, admin, player):
+    tier = {
+        "conditions": [
+            {"text": "Déposer des circuits élites", "quantity": 1000, "progress": 0},
+            {"text": "Casser des minerais obscurs", "quantity": 180},
+            {"text": "Avoir 10 membres"},
+        ],
+        "rewards": [{"text": "Tourelles"}],
+    }
+    saved = (await client.put(f"{RESEARCH}/militaire/tiers/3", json=tier, headers=editor)).json()
+    circuits, ores, members = saved["tiers"][2]["conditions"]
+    patched = await client.patch(
+        f"/api/v1/admin/research/lines/{circuits['id']}", json={"progress": 380}, headers=editor
+    )
+    assert patched.status_code == 200
+    first = patched.json()["tiers"][2]["conditions"][0]
+    assert (first["progress"], first["quantity"], first["done"]) == (380, 1000, False)
+    full = await client.patch(f"/api/v1/admin/research/lines/{ores['id']}", json={"progress": 180}, headers=editor)
+    assert full.json()["tiers"][2]["conditions"][1]["done"]
+    no_quantity = await client.patch(
+        f"/api/v1/admin/research/lines/{members['id']}", json={"progress": 3}, headers=editor
+    )
+    assert no_quantity.status_code == 422
+    rewards = saved["tiers"][2]["rewards"][0]["id"]
+    assert (
+        await client.patch(f"/api/v1/admin/research/lines/{rewards}", json={"done": True}, headers=editor)
+    ).status_code == 404
+    assert (
+        await client.patch(f"/api/v1/admin/research/lines/{members['id']}", json={"done": True}, headers=player)
+    ).status_code == 403
+
+    current = (await client.get("/api/v1/research", headers=player)).json()["categories"][1]["tiers"][2]
+    edited = {
+        "name": "Défense",
+        "conditions": [{**line, "text": line["text"] + " !"} for line in current["conditions"][:2]],
+        "rewards": current["rewards"],
+    }
+    kept = (await client.put(f"{RESEARCH}/militaire/tiers/3", json=edited, headers=editor)).json()["tiers"][2]
+    assert [c["id"] for c in kept["conditions"]] == [circuits["id"], ores["id"]]
+    assert kept["conditions"][0]["progress"] == 380 and kept["conditions"][0]["text"].endswith("!")
+
+    await client.patch(f"/api/v1/admin/research/lines/{circuits['id']}", json={"progress": 1000}, headers=editor)
+    staff = [m["title"] for m in await _inbox(client, admin)]
+    assert "R&D Militaire, palier 3 : toutes les conditions sont remplies" in staff
+    assert "toutes les conditions" not in " ".join(m["title"] for m in await _inbox(client, player))
+    log = (await client.get("/api/v1/admin/audit?system=research", headers=admin)).json()
+    assert log[0]["summary"].endswith("1000 / 1000")
+
+
+async def test_recurring_events_are_expanded_and_can_skip_a_date(client, editor, player):
+    first = datetime(2026, 11, 7, 20, 0, tzinfo=UTC)  # samedi 21 h à Paris
+    payload = {
+        "title": "Conseil du samedi",
+        "category": "meeting",
+        "starts_at": first.isoformat(),
+        "ends_at": (first + timedelta(hours=1)).isoformat(),
+        "recurrence": "weekly",
+        "notify": True,
+    }
+    created = (await client.post(EVENTS, json=payload, headers=editor)).json()
+    assert created["recurrence"] == "weekly" and created["occurrence"] is None
+    message = (await _inbox(client, player))[0]
+    assert "Chaque samedi à 21:00" in message["body"]
+
+    window = {"start": "2026-11-01T00:00:00+01:00", "end": "2026-12-01T00:00:00+01:00"}
+    listed = (await client.get("/api/v1/calendar/events", params=window, headers=player)).json()
+    assert [e["occurrence"] for e in listed] == ["2026-11-07", "2026-11-14", "2026-11-21", "2026-11-28"]
+    winter = datetime.fromisoformat(listed[3]["starts_at"])
+    assert winter.utcoffset() is not None and winter.astimezone(UTC).hour == 20
+
+    skip = {"day": "2026-11-14", "notify": True}
+    skipped = await client.post(f"{EVENTS}/{created['id']}/skip", json=skip, headers=editor)
+    assert skipped.json()["skipped_dates"] == ["2026-11-14"]
+    listed = (await client.get("/api/v1/calendar/events", params=window, headers=player)).json()
+    assert "2026-11-14" not in [e["occurrence"] for e in listed]
+    assert (await _inbox(client, player))[0]["title"].startswith("Annulé : Conseil du samedi, samedi 14 novembre")
+    wrong_day = await client.post(f"{EVENTS}/{created['id']}/skip", json={"day": "2026-11-15"}, headers=editor)
+    assert wrong_day.status_code == 422
+    restore = {"day": "2026-11-14", "skipped": False}
+    assert (await client.post(f"{EVENTS}/{created['id']}/skip", json=restore, headers=editor)).json()[
+        "skipped_dates"
+    ] == []
+
+    until = {**payload, "recurrence_until": "2026-11-20", "notify": False}
+    await client.put(f"{EVENTS}/{created['id']}", json=until, headers=editor)
+    listed = (await client.get("/api/v1/calendar/events", params=window, headers=player)).json()
+    assert [e["occurrence"] for e in listed] == ["2026-11-07", "2026-11-14"]
+
+    too_long = {**payload, "ends_at": (first + timedelta(days=2)).isoformat()}
+    assert (await client.post(EVENTS, json=too_long, headers=editor)).status_code == 422
+
+
+async def test_single_day_event_without_hours(client, editor, player):
+    day = datetime(2026, 11, 20, 0, 0, tzinfo=UTC)
+    created = await client.post(
+        EVENTS, json={"title": "Jour du marché", "starts_at": day.isoformat(), "all_day": True}, headers=editor
+    )
+    assert created.status_code == 201 and created.json()["all_day"] and created.json()["ends_at"] is None
+    window = {"start": "2026-11-20T00:00:00+00:00", "end": "2026-11-21T00:00:00+00:00"}
+    assert [
+        e["title"] for e in (await client.get("/api/v1/calendar/events", params=window, headers=player)).json()
+    ] == ["Jour du marché"]

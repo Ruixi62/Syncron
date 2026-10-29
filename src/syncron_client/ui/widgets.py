@@ -9,12 +9,14 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QLayout,
     QLayoutItem,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -29,7 +31,9 @@ from syncron_client.ui.theme import COLORS, TONES
 
 
 def label(text: str = "", role: str | None = None, wrap: bool = False) -> QLabel:
+    """Texte toujours affiché tel quel (jamais interprété comme du HTML : noms, messages… viennent des membres)."""
     widget = QLabel(text)
+    widget.setTextFormat(Qt.TextFormat.PlainText)
     if role:
         widget.setProperty("role", role)
     if role == "overline":
@@ -45,6 +49,7 @@ class ElidedLabel(QLabel):
 
     def __init__(self, text: str = "", role: str | None = None, parent: QWidget | None = None):
         super().__init__(parent)
+        self.setTextFormat(Qt.TextFormat.PlainText)
         if role:
             self.setProperty("role", role)
         self._full_text = text
@@ -81,6 +86,41 @@ def button(text: str, icon_name: str | None = None, variant: str | None = None) 
     return widget
 
 
+def compact_combo(editable: bool = False, min_chars: int = 12) -> QComboBox:
+    """Liste déroulante qui ne réclame pas la largeur de son plus long choix (sinon les formulaires débordent)."""
+    combo = QComboBox()
+    combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+    combo.setMinimumContentsLength(min_chars)
+    combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    if editable:
+        combo.setEditable(True)
+        combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        combo.completer().setFilterMode(Qt.MatchFlag.MatchContains)
+        combo.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+    return combo
+
+
+def ask(parent: QWidget, title: str, text: str, confirm: str = "Oui", cancel: str = "Annuler") -> bool:
+    """Question oui / non, texte affiché tel quel (il peut contenir des noms saisis par les membres)."""
+    box = QMessageBox(QMessageBox.Icon.Question, title, text, parent=parent)
+    box.setTextFormat(Qt.TextFormat.PlainText)
+    yes = box.addButton(confirm, QMessageBox.ButtonRole.AcceptRole)
+    box.addButton(cancel, QMessageBox.ButtonRole.RejectRole)
+    box.exec()
+    return box.clickedButton() is yes
+
+
+def choose(parent: QWidget, title: str, text: str, options: list[str], cancel: str = "Retour") -> int | None:
+    """Question à plusieurs réponses ; renvoie l'indice choisi, ou None si on renonce."""
+    box = QMessageBox(QMessageBox.Icon.Question, title, text, parent=parent)
+    box.setTextFormat(Qt.TextFormat.PlainText)
+    buttons = [box.addButton(option, QMessageBox.ButtonRole.AcceptRole) for option in options]
+    box.addButton(cancel, QMessageBox.ButtonRole.RejectRole)
+    box.exec()
+    clicked = box.clickedButton()
+    return buttons.index(clicked) if clicked in buttons else None
+
+
 def icon_button(icon_name: str, tooltip: str, size: int = 18) -> QToolButton:
     widget = QToolButton()
     widget.setProperty("variant", "icon")
@@ -115,6 +155,7 @@ class Chip(QFrame):
         super().__init__(parent)
         self._icon = QLabel()
         self._text = QLabel()
+        self._text.setTextFormat(Qt.TextFormat.PlainText)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 3, 9, 3)
         layout.setSpacing(5)

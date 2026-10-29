@@ -82,7 +82,18 @@ Dans **Comptes**, passe un membre en Éditeur, puis choisis ses systèmes dans l
 - **Serveur** : `git pull && docker compose up -d --build`. Les migrations s'appliquent toutes seules.
 - **Client** : publie le nouveau build. Pour obliger les membres à mettre à jour, augmente `SYNCRON_MIN_CLIENT_VERSION` dans `.env`, puis lance `docker compose up -d`. Les anciens clients affichent alors « Mise à jour requise ».
 
-## 8. Passer de la 4.0 à la 4.1
+## 8. Passer à la 4.3
+
+La migration `0003` ajoute le suivi des conditions de R&D et la récurrence des événements ; elle conserve toutes les données.
+
+1. Sur le serveur : dans `.env`, mets `SYNCRON_MIN_CLIENT_VERSION=4.3.0`, puis `git pull && docker compose up -d --build`.
+2. Publie le client : pousse le tag `v4.3.0` ; le workflow GitHub construit `Syncron-windows.zip` et la Release. Les clients 4.2 se mettent à jour tout seuls au prochain lancement.
+
+Un client 4.2 resterait utilisable en lecture, mais l'écran de gestion de la R&D d'avant la 4.3 effacerait les quantités réunies en enregistrant un palier : d'où la version minimale.
+
+Nouveaux réglages facultatifs : `SYNCRON_AUTH_RATE_LIMIT` (connexions par minute et par adresse, 30 par défaut) et `SYNCRON_MAX_REQUEST_BYTES` (5 Mo par défaut).
+
+### Passer de la 4.0 à la 4.1
 
 Les routes de gestion du Craft ont changé de place (`/api/v1/admin/craft/…`) : un client 4.0 ne peut plus rien modifier. Dans l'ordre :
 

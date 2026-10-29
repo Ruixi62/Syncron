@@ -260,6 +260,10 @@ async def _set_image(
     entity_id: str,
     file: UploadFile | None,
 ) -> WriteOut:
+    _check_id(entity_id)
+    current = await load_catalog(session)
+    if all(e.id != entity_id for e in (current.items if kind == "items" else current.stations)):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"« {entity_id} » introuvable.")
     new_url = None
     if file is not None:
         raw = await file.read(settings.max_image_bytes + 1)

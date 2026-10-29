@@ -31,17 +31,51 @@ class TierStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Line:
+    """Condition ou récompense. `progress` : quantité déjà réunie (380 sur 1 000)."""
+
     text: str
     quantity: int | None = None
     item_id: str | None = None
     done: bool = False
+    progress: int | None = None
+    id: int | None = None
 
     @classmethod
     def from_api(cls, raw: dict[str, Any]) -> Line:
-        return cls(raw.get("text") or "", raw.get("quantity"), raw.get("item_id"), bool(raw.get("done")))
+        return cls(
+            raw.get("text") or "",
+            raw.get("quantity"),
+            raw.get("item_id"),
+            bool(raw.get("done")),
+            raw.get("progress"),
+            raw.get("id"),
+        )
 
     def to_api(self) -> dict[str, Any]:
-        return {"text": self.text, "quantity": self.quantity, "item_id": self.item_id, "done": self.done}
+        return {
+            "id": self.id,
+            "text": self.text,
+            "quantity": self.quantity,
+            "progress": self.progress if self.quantity else None,
+            "item_id": self.item_id,
+            "done": self.done,
+        }
+
+    @property
+    def tracked(self) -> bool:
+        """Condition chiffrée : on suit combien on en a réuni."""
+        return self.quantity is not None
+
+    @property
+    def fraction(self) -> float:
+        if self.done:
+            return 1.0
+        if not self.quantity:
+            return 0.0
+        return min((self.progress or 0) / self.quantity, 1.0)
+
+    def progress_text(self) -> str:
+        return f"{format_quantity(self.progress or 0)} / {format_quantity(self.quantity or 0)}"
 
     def describe(self, catalog: CatalogService | None = None) -> str:
         """« 2 000 × Lingot de fer — à déposer au QG », « Avoir 10 membres »."""
@@ -74,6 +108,10 @@ class Tier:
     @property
     def title(self) -> str:
         return f"Palier {self.level}" + (f" · {self.name}" if self.name else "")
+
+    @property
+    def done_count(self) -> int:
+        return sum(1 for line in self.conditions if line.done)
 
     @property
     def is_empty(self) -> bool:

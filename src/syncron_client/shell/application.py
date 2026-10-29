@@ -24,7 +24,7 @@ from syncron_client.api.discord_login import DiscordLoginFlow, LoginCancelled
 from syncron_client.api.errors import NetworkError
 from syncron_client.api.token_store import TokenStore
 from syncron_client.catalog_store import CatalogStore
-from syncron_client.config import SERVER_URL_KEY, resolve_server_url, version_tuple
+from syncron_client.config import SERVER_URL_KEY, is_safe_server_url, resolve_server_url, version_tuple
 from syncron_client.notifications import NotificationCenter
 from syncron_client.paths import AppPaths
 from syncron_client.platform.registry import ToolRegistry
@@ -250,8 +250,8 @@ class Launcher(QObject):
             self.shell = None
 
     def change_server(self, url: str) -> None:
-        if not url.startswith(("http://", "https://")):
-            self.login.show_error("Adresse invalide : elle doit commencer par https://")
+        if not is_safe_server_url(url):
+            self.login.show_error("Adresse refusée : elle doit commencer par https:// (connexion chiffrée).")
             return
         self.settings.set(SERVER_URL_KEY, url)
         self.settings.save()

@@ -12,6 +12,7 @@ from syncron_core.errors import AppError
 
 MEDIA_PREFIX = "/media/"
 MAX_SIDE = 512
+MAX_PIXELS = 4096 * 4096  # au-delà : refus avant décodage (images « bombes » de décompression)
 ALLOWED_FORMATS = {"PNG", "JPEG", "WEBP", "GIF", "BMP"}
 
 
@@ -24,19 +25,29 @@ def normalize_image(raw: bytes, max_bytes: int) -> bytes:
         raise ImageError(f"Image trop lourde ({len(raw) // 1024} Ko, maximum {max_bytes // 1024} Ko).")
     try:
         with Image.open(io.BytesIO(raw)) as probe:
+            _check_dimensions(probe)
             probe.verify()
         with Image.open(io.BytesIO(raw)) as image:
             if image.format not in ALLOWED_FORMATS:
                 raise ImageError(f"Format non accepté : {image.format}. Formats : PNG, JPEG, WEBP, GIF, BMP.")
+            _check_dimensions(image)
             image.seek(0)
             converted = image.convert("RGBA")
-    except (UnidentifiedImageError, OSError, SyntaxError) as exc:
+    except Image.DecompressionBombError as exc:
+        raise ImageError("Image trop grande.") from exc
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as exc:
         raise ImageError("Fichier image illisible.") from exc
     if max(converted.size) > MAX_SIDE:
         converted.thumbnail((MAX_SIDE, MAX_SIDE), Image.Resampling.NEAREST)
     output = io.BytesIO()
     converted.save(output, format="PNG", optimize=True)
     return output.getvalue()
+
+
+def _check_dimensions(image: Image.Image) -> None:
+    width, height = image.size
+    if width <= 0 or height <= 0 or width * height > MAX_PIXELS:
+        raise ImageError(f"Image trop grande ({width}×{height} pixels, 4096×4096 au plus).")
 
 
 def store_image(media_dir: Path, kind: str, entity_id: str, png: bytes) -> str:

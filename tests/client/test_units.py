@@ -8,7 +8,7 @@ import pytest
 
 from syncron_client.api.discord_login import pkce_pair
 from syncron_client.api.token_store import TokenStore
-from syncron_client.config import resolve_server_url, version_tuple
+from syncron_client.config import is_safe_server_url, resolve_server_url, version_tuple
 from syncron_client.settings import JsonSettingsStore
 from syncron_client.tasks import TaskRunner
 
@@ -49,6 +49,32 @@ def test_server_url_priority(tmp_path, monkeypatch):
     assert resolve_server_url(settings, tmp_path) == "https://perso.fr"
     monkeypatch.setenv("SYNCRON_SERVER_URL", "https://env.fr")
     assert resolve_server_url(settings, tmp_path) == "https://env.fr"
+    monkeypatch.setenv("SYNCRON_SERVER_URL", "http://api.en-clair.fr")
+    assert resolve_server_url(settings, tmp_path) == "https://perso.fr"
+
+
+@pytest.mark.parametrize(
+    ("url", "safe"),
+    [
+        ("https://syncron.guideon.dev", True),
+        ("http://127.0.0.1:8000", True),
+        ("http://localhost:8000", True),
+        ("http://syncron.guideon.dev", False),
+        ("ftp://x", False),
+        ("https://", False),
+    ],
+)
+def test_only_encrypted_or_local_servers(url, safe):
+    assert is_safe_server_url(url) is safe
+
+
+def test_updater_refuses_foreign_hosts():
+    from syncron_client.updater import UpdateError, _check_url
+
+    _check_url("https://github.com/Ruixi62/Syncron/releases/download/v4.3.0/Syncron-windows.zip")
+    for url in ("http://github.com/x.zip", "https://evil.example/x.zip", "https://github.com.evil.example/x"):
+        with pytest.raises(UpdateError):
+            _check_url(url)
 
 
 @pytest.mark.parametrize(("older", "newer"), [("4.0.0", "4.0.1"), ("4.9", "4.10"), ("3.9.9", "4"), ("4.0.0b1", "4.1")])

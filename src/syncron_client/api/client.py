@@ -9,7 +9,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -178,11 +178,24 @@ class ApiClient:
     def event(self, event_id: str) -> dict[str, Any]:
         return self._json("GET", f"/api/v1/calendar/events/{event_id}")
 
+    def admin_events(self) -> list[dict[str, Any]]:
+        return self._json("GET", "/api/v1/admin/calendar/events")
+
+    def admin_event(self, event_id: str) -> dict[str, Any]:
+        return self._json("GET", f"/api/v1/admin/calendar/events/{event_id}")
+
     def create_event(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._json("POST", "/api/v1/admin/calendar/events", json=payload, expected=(201,))
 
     def update_event(self, event_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._json("PUT", f"/api/v1/admin/calendar/events/{event_id}", json=payload)
+
+    def skip_occurrence(self, event_id: str, day: date, skipped: bool = True, notify: bool = False) -> dict[str, Any]:
+        body = {"day": day.isoformat(), "skipped": skipped, "notify": notify}
+        return self._json("POST", f"/api/v1/admin/calendar/events/{event_id}/skip", json=body)
+
+    def patch_research_line(self, line_id: int, **changes: Any) -> dict[str, Any]:
+        return self._json("PATCH", f"/api/v1/admin/research/lines/{line_id}", json=changes)
 
     def delete_event(self, event_id: str, notify: bool = False) -> None:
         params = {"notify": "true" if notify else "false"}

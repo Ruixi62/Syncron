@@ -1,4 +1,4 @@
-# Syncron 4.1 — Architecture
+# Syncron 4.3 — Architecture
 
 Syncron est le logiciel interne d'un pays de NationsGlory : un client de bureau réservé aux membres, connecté à une API hébergée.
 
@@ -67,6 +67,7 @@ erDiagram
         string skill_id "compétence Craft liée"
     }
     research_lines {
+        bigint progress "quantité réunie (380 / 1 000)"
         string kind "condition | reward"
         string text
         bigint quantity
@@ -79,6 +80,10 @@ erDiagram
         timestamptz starts_at
         timestamptz ends_at
         bool all_day
+        string recurrence "none | daily | weekly | monthly"
+        int recurrence_days "jours de la semaine (masque)"
+        date recurrence_until
+        json skipped_dates "dates annulées"
     }
     messages {
         bigint id PK
@@ -91,6 +96,8 @@ erDiagram
 
 - Le catalogue Craft est **normalisé** et protégé par des clés étrangères et des contraintes `CHECK`. `catalog_state.revision` sert d'**ETag** au client et de **verrou** d'écriture. Un temps de fabrication absent vaut « instantané ».
 - R&D : `completed ≤ tier_count`, et un index unique partiel sur `active` garantit **une seule recherche en cours** pour le pays.
+- Calendrier : une série est **une seule ligne** ; `/calendar/events` la déroule en occurrences (même heure locale de Paris, été comme hiver) avec `syncron_core.recurrence`, sans les dates annulées.
+- R&D : les lignes gardent leur identifiant quand un palier est réenregistré, donc leur progression ; une condition chiffrée est remplie dès que `progress ≥ quantity`.
 - Messagerie : les messages `direct` ont un accusé par destinataire créé à l'envoi ; ceux pour `all` / `staff` ont leur accusé créé à la première lecture. Un nouveau compte voit les annonces des 30 derniers jours.
 
 ### Un service commun : la messagerie
@@ -112,6 +119,10 @@ Tout système publie une nouvelle avec `messaging.post_message(session, system=�
 3. Un routeur `routers/<système>.py` avec `router` (lecture, `UserDep`) et `admin_router` (gestion, `Depends(manager("<système>"))`), inclus dans `app.py`.
 4. Un résumé `@overview_provider("<système>")` pour la vue d'ensemble, et `audit.record(…, "<système>", …)` à chaque écriture.
 
+### Protections HTTP
+
+`protection.py` : limite de débit par adresse sur `/api/v1/auth/*` (`SYNCRON_AUTH_RATE_LIMIT`, 30 par minute) et taille maximale des requêtes (`SYNCRON_MAX_REQUEST_BYTES`, 5 Mo). Les images sont refusées au-delà de 4096 × 4096 pixels avant décodage. Détails dans `SECURITE.md`.
+
 ### Authentification
 
 1. Le client ouvre `GET /api/v1/auth/discord/start?redirect_uri=http://127.0.0.1:<port>/callback&state&code_challenge`.
@@ -132,7 +143,9 @@ Tout système publie une nouvelle avec `messaging.post_message(session, system=�
 | GET | `/api/v1/admin/overview`, `/api/v1/admin/audit?system=` | éditeur (ses systèmes) |
 | PUT, DELETE | `/api/v1/admin/craft/{items,stations,skills}/{id}[/image]` · POST `/import` · GET `/export` | Craft (`replace` : admin) |
 | PUT, DELETE | `/api/v1/admin/research/categories/{id}[/tiers/{niveau}]` | R&D |
-| POST, PUT, DELETE | `/api/v1/admin/calendar/events[/{id}]` | Calendrier |
+| PATCH | `/api/v1/admin/research/lines/{id}` (condition cochée, quantité réunie) | R&D |
+| GET, POST, PUT, DELETE | `/api/v1/admin/calendar/events[/{id}]` (fiches, une ligne par série) | Calendrier |
+| POST | `/api/v1/admin/calendar/events/{id}/skip` (annuler ou rétablir une date) | Calendrier |
 | GET, POST, DELETE | `/api/v1/admin/messages[/{id}]`, `/recipients` | Messagerie |
 | GET, PATCH | `/api/v1/admin/users` | admin |
 | GET | `/media/…` | public, cache immuable |

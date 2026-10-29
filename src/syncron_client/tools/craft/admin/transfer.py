@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -183,7 +184,8 @@ def _import_report(result: dict[str, Any]) -> str:
         ]
         lines.append(f"{name} : " + " · ".join(parts))
         if section["removed"]:
-            lines.append(f"<span style='color:{COLORS.danger}'>Supprimés : {', '.join(section['removed'][:20])}</span>")
+            removed = escape(", ".join(section["removed"][:20]))
+            lines.append(f"<span style='color:{COLORS.danger}'>Supprimés : {removed}</span>")
     for warning in result.get("warnings", []):
-        lines.append(f"<span style='color:{COLORS.warning}'>⚠ {warning['message']}</span>")
+        lines.append(f"<span style='color:{COLORS.warning}'>⚠ {escape(warning['message'])}</span>")
     return "<br>".join(lines)

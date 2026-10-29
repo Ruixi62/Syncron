@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QScrollArea, QVBoxLayout, QWidget
 
-from syncron_client.config import SERVER_URL_KEY
+from syncron_client.config import SERVER_URL_KEY, is_safe_server_url
 from syncron_client.platform.registry import ToolRegistry
 from syncron_client.platform.tool import NotifyLevel, Placement, ToolHost, ToolStage
 from syncron_client.settings import JsonSettingsStore
@@ -172,8 +172,10 @@ class SettingsPage(QScrollArea):
 
     def _apply_server(self) -> None:
         url = self._server_url.text().strip().rstrip("/")
-        if not url.startswith(("http://", "https://")):
-            self._host.notify("Adresse invalide : elle doit commencer par https://", NotifyLevel.ERROR)
+        if not is_safe_server_url(url):
+            self._host.notify(
+                "Adresse refusée : elle doit commencer par https:// (connexion chiffrée).", NotifyLevel.ERROR
+            )
             return
         if url == self._host.api.base_url:
             return

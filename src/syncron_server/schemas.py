@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -197,10 +197,18 @@ class UserPatch(BaseModel):
 # -- R&D ------------------------------------------------------------------------------------
 
 
+Quantity = Field(None, ge=1, le=10_000_000_000)
+Progress = Field(None, ge=0, le=10_000_000_000)
+
+
 class ResearchLineIn(BaseModel):
+    """`id` : ligne existante à mettre à jour (sa progression est conservée) ; absent = nouvelle ligne."""
+
     model_config = ConfigDict(str_strip_whitespace=True)
+    id: int | None = None
     text: str = Field("", max_length=300)
-    quantity: int | None = Field(None, ge=1, le=10_000_000_000)
+    quantity: int | None = Quantity
+    progress: int | None = Progress
     item_id: str | None = Field(None, max_length=80)
     done: bool = False
 
@@ -209,13 +217,23 @@ class ResearchLineIn(BaseModel):
         self.item_id = self.item_id or None
         if not self.text and not self.item_id:
             raise ValueError("Une ligne doit avoir un texte ou un objet.")
+        if self.quantity is None:
+            self.progress = None
         return self
+
+
+class ResearchLinePatch(BaseModel):
+    """Suivi d'une condition depuis la page R&D : cochée, ou quantité réunie (380 sur 1 000)."""
+
+    done: bool | None = None
+    progress: int | None = Progress
 
 
 class ResearchLineOut(BaseModel):
     id: int
     text: str
     quantity: int | None
+    progress: int | None
     item_id: str | None
     done: bool
 
@@ -271,6 +289,7 @@ class ResearchOut(BaseModel):
 
 
 EventCategory = Literal["meeting", "war", "event", "economy", "other"]
+Recurrence = Literal["none", "daily", "weekly", "monthly"]
 
 
 class EventIn(BaseModel):
@@ -282,6 +301,10 @@ class EventIn(BaseModel):
     starts_at: datetime
     ends_at: datetime | None = None
     all_day: bool = False
+    recurrence: Recurrence = "none"
+    recurrence_interval: int = Field(1, ge=1, le=52)
+    recurrence_days: int = Field(0, ge=0, le=127)
+    recurrence_until: date | None = None
     notify: bool = False
 
     @field_validator("starts_at", "ends_at")
@@ -295,7 +318,24 @@ class EventIn(BaseModel):
     def _period(self) -> EventIn:
         if self.ends_at is not None and self.ends_at < self.starts_at:
             raise ValueError("La fin doit être après le début.")
+        if self.recurrence == "none":
+            self.recurrence_interval, self.recurrence_days, self.recurrence_until = 1, 0, None
+            return self
+        if self.ends_at is not None and self.ends_at - self.starts_at > timedelta(days=1):
+            raise ValueError("Un événement qui se répète dure 24 heures au plus.")
+        if self.recurrence_until is not None and self.recurrence_until < self.starts_at.date():
+            raise ValueError("La répétition doit s'arrêter après le premier événement.")
+        if self.recurrence != "weekly":
+            self.recurrence_days = 0
         return self
+
+
+class SkipIn(BaseModel):
+    """Annuler (ou rétablir) une seule date d'un événement qui se répète."""
+
+    day: date
+    skipped: bool = True
+    notify: bool = False
 
 
 class EventOut(BaseModel):
@@ -307,6 +347,12 @@ class EventOut(BaseModel):
     starts_at: datetime
     ends_at: datetime | None
     all_day: bool
+    recurrence: Recurrence
+    recurrence_interval: int
+    recurrence_days: int
+    recurrence_until: date | None
+    skipped_dates: list[date]
+    occurrence: date | None = None
     author: str | None
     updated_at: datetime
 

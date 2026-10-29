@@ -25,12 +25,12 @@ def test_unit_sizes_match_nationsglory():
 @pytest.mark.parametrize(
     ("quantity", "stack_size", "text"),
     [
-        (5000, 64, "1 double coffre + 2 lignes + 6 stacks + 8"),
+        (5000, 64, "1 double coffre + 2 lignes + 6 stacks + 8 objets seuls"),
         (3456, 64, "1 double coffre"),
         (1728 + 64, 64, "1 coffre + 1 stack"),
-        (63, 64, "63"),
-        (0, 64, "0"),
-        (100, 16, "6 stacks + 4"),
+        (63, 64, "63 objets seuls"),
+        (0, 64, "0 objet seul"),
+        (100, 16, "6 stacks + 4 objets seuls"),
         (60, 1, "1 double coffre + 6 stacks"),
         (8 * 3456, 64, "8 doubles coffres"),
     ],
@@ -40,6 +40,13 @@ def test_decompose(quantity, stack_size, text):
     assert breakdown.text() == text
     total = sum(unit.size(stack_size) * count for unit, count in breakdown.parts) + breakdown.remainder
     assert total == quantity
+
+
+def test_euclidean_division_with_chosen_units():
+    assert decompose(648).text() == "1 ligne + 1 stack + 8 objets seuls"
+    assert decompose(648, units=(STACK,)).text() == "10 stacks + 8 objets seuls"
+    assert decompose(5000, units=(CHEST, STACK)).text() == "2 coffres + 24 stacks + 8 objets seuls"
+    assert decompose(1, units=(LINE,)).text() == "1 objet seul"
 
 
 def test_slots_express_and_containers():

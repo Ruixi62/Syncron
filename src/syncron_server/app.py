@@ -15,6 +15,7 @@ from syncron_server.catalog_store import CatalogValidationError
 from syncron_server.config import Settings
 from syncron_server.db import Database
 from syncron_server.discord import DiscordOAuth, DiscordProvider
+from syncron_server.protection import AuthRateLimit, BodySizeLimit
 from syncron_server.routers import admin, auth, calendar, catalog, craft_admin, inbox, research
 from syncron_server.schemas import IssueOut
 
@@ -58,6 +59,9 @@ def create_app(
     @app.get("/health", include_in_schema=False)
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    app.add_middleware(AuthRateLimit, limit=lambda: app.state.settings.auth_rate_limit)
+    app.add_middleware(BodySizeLimit, limit=lambda: app.state.settings.max_request_bytes)
 
     app.include_router(auth.router)
     app.include_router(catalog.router)

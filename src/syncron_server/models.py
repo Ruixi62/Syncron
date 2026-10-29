@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -21,6 +21,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -284,6 +285,7 @@ class ResearchLine(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
     text: Mapped[str] = mapped_column(String(300), default="")
     quantity: Mapped[int | None] = mapped_column(BigInteger)
+    progress: Mapped[int | None] = mapped_column(BigInteger)
     item_id: Mapped[str | None] = mapped_column(String(ID_LENGTH))
     done: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -298,6 +300,7 @@ class ResearchLine(Base):
         Index("ix_research_lines_tier", "category_id", "level"),
         CheckConstraint("kind in ('condition', 'reward')", name="kind"),
         CheckConstraint("quantity is null or quantity >= 1", name="quantity"),
+        CheckConstraint("progress is null or progress >= 0", name="progress"),
         CheckConstraint("text <> '' or item_id is not null", name="content"),
     )
 
@@ -306,6 +309,7 @@ class ResearchLine(Base):
 
 
 EVENT_CATEGORIES = ("meeting", "war", "event", "economy", "other")
+RECURRENCES = ("none", "daily", "weekly", "monthly")
 
 
 class CalendarEvent(Base):
@@ -319,6 +323,11 @@ class CalendarEvent(Base):
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     all_day: Mapped[bool] = mapped_column(Boolean, default=False)
+    recurrence: Mapped[str] = mapped_column(String(8), default="none")
+    recurrence_interval: Mapped[int] = mapped_column(Integer, default=1)
+    recurrence_days: Mapped[int] = mapped_column(Integer, default=0)
+    recurrence_until: Mapped[date | None] = mapped_column(Date)
+    skipped_dates: Mapped[list[str]] = mapped_column(JSON, default=list)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -326,6 +335,9 @@ class CalendarEvent(Base):
     __table_args__ = (
         CheckConstraint(f"category in {EVENT_CATEGORIES}", name="category"),
         CheckConstraint("ends_at is null or ends_at >= starts_at", name="period"),
+        CheckConstraint(f"recurrence in {RECURRENCES}", name="recurrence"),
+        CheckConstraint("recurrence_interval between 1 and 52", name="recurrence_interval"),
+        CheckConstraint("recurrence_days between 0 and 127", name="recurrence_days"),
     )
 
 

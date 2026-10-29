@@ -22,6 +22,7 @@ from syncron_client.tools.calendar.model import Event, grid_range
 from syncron_client.tools.calendar.page import CalendarPage
 from syncron_client.ui import icons
 from syncron_client.ui.theme import COLORS
+from syncron_client.ui.widgets import choose
 
 EVENTS_SECTION = "calendar.events"
 UPCOMING_DAYS = 60
@@ -40,7 +41,7 @@ class CalendarTool(Tool):
         name="Calendrier",
         description="Réunions, guerres, événements et rendez-vous économiques du pays.",
         icon="calendar",
-        version="4.1.0",
+        version="4.3.0",
         system="calendar",
     )
 
@@ -79,6 +80,7 @@ class CalendarTool(Tool):
             lambda day: self._host.open_tool("admin", admin_link(EVENTS_SECTION, f"new:{day.isoformat()}"))
         )
         self._page.editRequested.connect(lambda key: self._host.open_tool("admin", admin_link(EVENTS_SECTION, key)))
+        self._page.skipRequested.connect(self._confirm_skip)
         refresh = QAction(icons.icon("refresh", COLORS.text_muted, 16), "Actualiser", self._page)
         refresh.setToolTip("Recharger le calendrier")
         refresh.triggered.connect(self.refresh)
@@ -104,6 +106,35 @@ class CalendarTool(Tool):
             self.load_month(event.first_day.year, event.first_day.month, focus=event)
 
         call_api(self._host, lambda: self._host.api.event(key), show)
+
+    def skip(self, event_id: str, day: date, notify: bool) -> None:
+        """Annule une seule date d'un événement qui se répète."""
+
+        def done(_raw: dict[str, Any]) -> None:
+            if notify:
+                self._host.notifications.poll()
+            self.refresh()
+            if self._admin is not None:
+                self._admin.refresh()
+
+        call_api(
+            self._host,
+            lambda: self._host.api.skip_occurrence(event_id, day, True, notify),
+            done,
+            success=f"Date du {day:%d/%m} annulée.",
+        )
+
+    def _confirm_skip(self, event_id: str, day: date) -> None:
+        event = next((e for e in self._page.events if e.id == event_id and e.occurrence == day), None)
+        title = event.title if event else "cet événement"
+        choice = choose(
+            self._page,
+            "Annuler une date",
+            f"Annuler « {title} » le {day:%d/%m/%Y} ? Les autres dates restent prévues.",
+            ["Annuler et prévenir le pays", "Annuler sans prévenir"],
+        )
+        if choice is not None:
+            self.skip(event_id, day, notify=choice == 0)
 
     def page_actions(self) -> Sequence[QAction]:
         return self._actions

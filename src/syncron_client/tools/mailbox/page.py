@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QScrollArea,
     QSplitter,
     QStackedWidget,
@@ -23,7 +22,7 @@ from syncron_client.platform.tool import ToolHost
 from syncron_client.ui import icons
 from syncron_client.ui.format import format_datetime, relative_time
 from syncron_client.ui.theme import COLORS
-from syncron_client.ui.widgets import Card, Chip, EmptyState, SegmentedControl, button, label
+from syncron_client.ui.widgets import Card, Chip, EmptyState, SegmentedControl, ask, button, label
 
 PAGE_SIZE = 50
 ITEM_HEIGHT = 50
@@ -275,8 +274,7 @@ class MailboxPage(QWidget):
         message = self.view.message
         if message is None:
             return
-        answer = QMessageBox.question(self, "Supprimer", f"Supprimer « {message['title']} » de ta messagerie ?")
-        if answer == QMessageBox.StandardButton.Yes:
+        if ask(self, "Supprimer", f"Supprimer « {message['title']} » de ta messagerie ?"):
             self.delete(message["id"])
 
     def delete(self, message_id: int) -> None:

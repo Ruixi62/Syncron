@@ -1,4 +1,4 @@
-# Syncron 4.1
+# Syncron 4.3
 
 Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargeable** (Windows, Linux, macOS) réservé aux membres du pays, connecté à une **API hébergée**. La connexion se fait avec **Discord** (limitée au serveur Discord du pays), et une **administration découpée par système** permet à l'équipe de tout tenir à jour.
 
@@ -6,9 +6,9 @@ Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargea
 |---|---|---|
 | **Messagerie** | tous | annonces de l'équipe et nouvelles du pays, avec notifications |
 | **Craft** | tous | ressources, étapes, ateliers, prérequis et temps de fabrication (calcul local, hors ligne possible) |
-| **R&D** | tous | les cinq domaines (global, militaire, ressources, industrie, technologie), leurs paliers, conditions, récompenses et l'avancement du pays |
-| **Calendrier** | tous | réunions, guerres, événements, économie, en vue mensuelle |
-| **Convertisseur** | tous | une quantité en stacks (64), lignes (576), coffres (1 728) et doubles coffres (3 456) |
+| **R&D** | tous | les cinq domaines (global, militaire, ressources, industrie, technologie), leurs paliers, conditions, récompenses et l'avancement du pays (380 / 1 000…) |
+| **Calendrier** | tous | réunions, guerres, événements, économie ; vue du mois ou liste ; événements récurrents |
+| **Convertisseur** | tous | stacks (64), lignes (576), coffres (1 728), doubles coffres (3 456) : division euclidienne ou unité unique |
 | **Administration** | éditeurs, admins | une section par système, plus les comptes et le journal |
 
 ```
@@ -27,8 +27,8 @@ Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargea
 | `src/syncron_server/` | API : FastAPI, SQLAlchemy 2 async, Alembic, Discord OAuth2, JWT, un routeur par système |
 | `src/syncron_client/` | Client de bureau : connexion, session, notifications, plateforme d'outils, un paquet par outil |
 | `deploy/` | Dockerfile, docker-compose (PostgreSQL + API + Caddy), `.env.example`, sauvegardes, catalogue d'exemple |
-| `tests/` | 152 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
-| `docs/` | `DEPLOIEMENT.md` (mise en ligne, passage 4.0 → 4.1) et `ARCHITECTURE.md` (systèmes, ajouter un outil) |
+| `tests/` | 175 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
+| `docs/` | `DEPLOIEMENT.md` (mise en ligne, mises à jour), `ARCHITECTURE.md` (systèmes, ajouter un outil), `SECURITE.md` (audit) |
 
 ## Démarrage rapide (développement)
 
@@ -51,6 +51,15 @@ ruff check . && ruff format --check .
 ## Production
 
 Voir [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) : application Discord, `docker compose up -d --build`, build du client avec `python build_client.py --server-url https://…`, rôles et systèmes confiés, mises à jour, sauvegardes.
+
+## Nouveautés de la 4.3
+
+- **Calendrier** : grille du mois redessinée (plus aucun chevauchement, titres raccourcis avec « … » et complets au survol), vue **Liste**, événements **récurrents** (chaque jour, chaque semaine sur les jours choisis, chaque mois, avec date de fin) et annulation d'une seule date, événements sur une **journée** sans heure.
+- **R&D** : suivi des conditions chiffrées (380 / 1 000) et cases à cocher directement dans la page R&D pour l'équipe, boutons « Lancer » et « Valider » sur les paliers, administration refaite (paliers en pastilles, lignes sur deux rangées, reprise du palier précédent, Ctrl+S). L'équipe est prévenue quand toutes les conditions d'un palier sont remplies.
+- **Convertisseur** : deux modes, division euclidienne (648 = 1 ligne + 1 stack + 8 objets seuls, contenants au choix) ou unité unique (648 = 10 stacks + 8 objets seuls).
+- **Notifications** : pastille avec le nombre de messages non lus sur l'icône de Syncron dans la barre des tâches, et icône qui clignote à l'arrivée d'un message.
+- **Formulaires d'administration** sans débordement à droite, navigation réduite aux icônes quand la fenêtre est étroite.
+- **Sécurité** : voir [`docs/SECURITE.md`](docs/SECURITE.md).
 
 ## Nouveautés de la 4.1
 

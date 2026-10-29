@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPlainTextEdit,
     QSplitter,
     QVBoxLayout,
@@ -23,7 +22,7 @@ from syncron_client.platform.tool import ToolHost
 from syncron_client.session import Role
 from syncron_client.ui.format import relative_time
 from syncron_client.ui.tables import fill_rows, make_table, muted_cell, text_cell
-from syncron_client.ui.widgets import Banner, Card, SearchField, SegmentedControl, button, label
+from syncron_client.ui.widgets import Banner, Card, SearchField, SegmentedControl, ask, button, label
 from syncron_core.text import normalize
 
 AUDIENCES = (("all", "Tout le pays", "globe"), ("staff", "L'équipe", "shield"), ("users", "Membres choisis", "users"))
@@ -46,7 +45,6 @@ class AnnouncementsView(QWidget):
         self.title_field.setPlaceholderText("Mobilisation générale samedi 21 h")
         self.body_field = QPlainTextEdit()
         self.body_field.setPlaceholderText("Détails, consignes, liens…")
-        self.body_field.setMinimumHeight(140)
         self.audience = SegmentedControl([(text, icon) for _value, text, icon in AUDIENCES])
         self.audience.currentChanged.connect(self._audience_changed)
         self.recipient_search = SearchField("Filtrer les membres…")
@@ -88,12 +86,14 @@ class AnnouncementsView(QWidget):
         history.body.addLayout(head)
         history.body.addWidget(self.table, 1)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.body_field.setMinimumHeight(110)
+        self.table.setMinimumHeight(220)
+        splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
         splitter.setHandleWidth(16)
         splitter.addWidget(compose)
         splitter.addWidget(history)
-        splitter.setSizes([520, 680])
+        splitter.setSizes([460, 300])
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(splitter)
@@ -165,10 +165,7 @@ class AnnouncementsView(QWidget):
         if not rows:
             return
         message = self._sent[rows[0]]
-        answer = QMessageBox.question(
-            self, "Retirer", f"Retirer « {message['title']} » de toutes les messageries ? C'est définitif."
-        )
-        if answer == QMessageBox.StandardButton.Yes:
+        if ask(self, "Retirer", f"Retirer « {message['title']} » de toutes les messageries ? C'est définitif."):
             self.retract(message["id"])
 
     def _show_sent(self, messages: list[dict[str, Any]]) -> None:

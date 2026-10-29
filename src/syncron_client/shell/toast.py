@@ -25,6 +25,7 @@ class Toast(QFrame):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self._glyph = QLabel()
         self._text = QLabel()
+        self._text.setTextFormat(Qt.TextFormat.PlainText)
         self._text.setWordWrap(True)
         self._text.setMaximumWidth(420)
         layout = QHBoxLayout(self)

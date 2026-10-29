@@ -85,6 +85,8 @@ ICONS: dict[str, str] = {
     '<path d="M7 14l1 5h2.5l-1-4.5"/>',
     "convert": '<path d="M4 8h14l-3.5-3.5"/><path d="M20 16H6l3.5 3.5"/>',
     "chevron-left": '<path d="m15 6-6 6 6 6"/>',
+    "chevron-up": '<path d="m6 15 6-6 6 6"/>',
+    "chevron-down": '<path d="m6 9 6 6 6-6"/>',
     "globe": '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/>',
     "sword": '<path d="M14.5 3H21v6.5L10 20.5 3.5 14z"/><path d="m6 17-3 3M8 13l3 3"/>',
     "pickaxe": '<path d="M4 7.5C8 3.5 14 3 19.5 4.5 21 10 20.5 16 16.5 20"/><path d="m14 10-10 10"/>',

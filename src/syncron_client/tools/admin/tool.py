@@ -40,6 +40,8 @@ USERS = "admin.users"
 AUDIT = "admin.audit"
 KEY_ROLE = Qt.ItemDataRole.UserRole + 1
 NAV_WIDTH = 230
+NAV_COMPACT_WIDTH = 60
+COMPACT_BELOW = 1060
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,9 +82,10 @@ class AdminPage(QWidget):
                 item.setData(KEY_ROLE, section.key)
                 self.nav.addItem(item)
         self.nav.currentItemChanged.connect(self._on_nav)
-        nav_card = Card(padding=10, spacing=0)
-        nav_card.setFixedWidth(NAV_WIDTH)
-        nav_card.body.addWidget(self.nav)
+        self._nav_card = Card(padding=10, spacing=0)
+        self._nav_card.setFixedWidth(NAV_WIDTH)
+        self._nav_card.body.addWidget(self.nav)
+        self._compact = False
 
         self._title = label("", "heading")
         self._stack = QStackedWidget()
@@ -93,8 +96,34 @@ class AdminPage(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(20, 16, 20, 20)
         layout.setSpacing(16)
-        layout.addWidget(nav_card)
+        layout.addWidget(self._nav_card)
         layout.addLayout(right, 1)
+
+    # -- disposition ----------------------------------------------------------------------
+
+    @property
+    def compact(self) -> bool:
+        return self._compact
+
+    def set_compact(self, compact: bool) -> None:
+        """Fenêtre étroite : navigation réduite aux icônes, pour laisser la place aux formulaires."""
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self._nav_card.setFixedWidth(NAV_COMPACT_WIDTH if compact else NAV_WIDTH)
+        for row in range(self.nav.count()):
+            item = self.nav.item(row)
+            key = item.data(KEY_ROLE)
+            if key is None:
+                item.setHidden(compact)
+                continue
+            title = self._sections[key].title
+            item.setText("" if compact else title)
+            item.setToolTip(title if compact else "")
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.set_compact(self.width() < COMPACT_BELOW)
 
     # -- navigation -----------------------------------------------------------------------
 
@@ -159,7 +188,7 @@ class AdminTool(Tool):
         name="Administration",
         description="Gestion de chaque système du pays, des comptes et du journal.",
         icon="shield",
-        version="4.1.0",
+        version="4.3.0",
         min_role="editor",
         placement=Placement.MANAGE,
     )

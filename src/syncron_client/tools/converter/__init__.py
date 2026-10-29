@@ -14,16 +14,16 @@ from syncron_client.tools.converter.page import ConverterPage
 from syncron_client.ui import icons
 from syncron_client.ui.theme import COLORS
 
-STACK_SIZE_KEY = "stack_size"
+PREFERENCES_KEY = "preferences"
 
 
 class ConverterTool(Tool):
     _INFO = ToolInfo(
         id="converter",
         name="Convertisseur",
-        description="Une quantité en stacks (64), lignes (576), coffres (1 728) et doubles coffres (3 456).",
+        description="Stacks (64), lignes (576), coffres (1 728), doubles coffres (3 456) : division ou unité unique.",
         icon="convert",
-        version="4.1.0",
+        version="4.3.0",
     )
 
     def __init__(self) -> None:
@@ -45,9 +45,9 @@ class ConverterTool(Tool):
         self._settings = JsonSettingsStore(host.tool_paths(self.info.id).user_dir / "settings.json")
 
     def create_page(self) -> QWidget:
-        stored = self._settings.get(STACK_SIZE_KEY, 64)
-        self._page = ConverterPage(stored if isinstance(stored, int) else 64)
-        self._page.stackSizeChanged.connect(lambda size: self._settings.set(STACK_SIZE_KEY, size))
+        stored = self._settings.get(PREFERENCES_KEY, {})
+        self._page = ConverterPage(stored if isinstance(stored, dict) else {})
+        self._page.settingsChanged.connect(lambda preferences: self._settings.set(PREFERENCES_KEY, preferences))
         copy = QAction(icons.icon("copy", COLORS.text_muted, 16), "Copier", self._page)
         copy.setShortcut(QKeySequence("Ctrl+Shift+C"))
         copy.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)

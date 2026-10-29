@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from syncron_client.ui.format import parse_datetime
 from syncron_client.ui.theme import COLORS
+from syncron_core.recurrence import NONE, Rule
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +39,8 @@ class Event:
     ends_at: datetime | None
     all_day: bool
     author: str | None
+    rule: Rule = field(default_factory=Rule)
+    occurrence: date | None = None
 
     @classmethod
     def from_api(cls, raw: dict[str, Any]) -> Event:
@@ -51,7 +54,28 @@ class Event:
             ends_at=parse_datetime(raw.get("ends_at")),
             all_day=bool(raw.get("all_day")),
             author=raw.get("author"),
+            rule=Rule(
+                raw.get("recurrence") or NONE,
+                int(raw.get("recurrence_interval") or 1),
+                int(raw.get("recurrence_days") or 0),
+                date.fromisoformat(raw["recurrence_until"]) if raw.get("recurrence_until") else None,
+                frozenset(date.fromisoformat(day) for day in raw.get("skipped_dates") or []),
+            ),
+            occurrence=date.fromisoformat(raw["occurrence"]) if raw.get("occurrence") else None,
         )
+
+    @property
+    def key(self) -> str:
+        """Identifiant d'affichage : une série a une clé par date."""
+        return f"{self.id}:{self.occurrence.isoformat()}" if self.occurrence else self.id
+
+    @property
+    def recurring(self) -> bool:
+        return self.rule.repeats
+
+    @property
+    def recurrence_text(self) -> str:
+        return self.rule.describe(self.first_day)
 
     @property
     def first_day(self) -> date:
@@ -67,7 +91,7 @@ class Event:
     def time_text(self, day: date | None = None) -> str:
         if self.all_day:
             if self.first_day == self.last_day:
-                return "Toute la journée"
+                return "Journée entière"
             return f"Du {self.first_day:%d/%m} au {self.last_day:%d/%m}"
         start = f"{self.starts_at:%H:%M}"
         if self.ends_at is None:

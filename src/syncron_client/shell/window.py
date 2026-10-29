@@ -4,8 +4,16 @@ notifications (cloche, bulles, notifications du bureau)."""
 from __future__ import annotations
 
 from PySide6.QtCore import QByteArray, Qt, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QResizeEvent
-from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget
+from PySide6.QtGui import QAction, QCloseEvent, QGuiApplication, QKeySequence, QPixmap, QResizeEvent
+from PySide6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QMainWindow,
+    QStackedWidget,
+    QSystemTrayIcon,
+    QVBoxLayout,
+    QWidget,
+)
 
 from syncron_client.platform.registry import ToolRegistry
 from syncron_client.platform.tool import NotifyLevel, Placement, ToolStage
@@ -23,6 +31,13 @@ from syncron_core import APP_DISPLAY_NAME
 MIN_SIZE = (1120, 720)
 MAILBOX_ID = "mailbox"
 SIDEBAR_ORDER = (Placement.MAIN, Placement.TOOLS, Placement.MANAGE)
+
+
+def set_taskbar_badge(count: int) -> None:
+    """Pastille sur l'icône de Syncron dans la barre des tâches (Windows, macOS, Linux selon le bureau)."""
+    app = QGuiApplication.instance()
+    if app is not None and hasattr(app, "setBadgeNumber"):
+        app.setBadgeNumber(max(count, 0))
 
 
 class ShellWindow(QMainWindow):
@@ -83,6 +98,7 @@ class ShellWindow(QMainWindow):
         self._top_bar.retryRequested.connect(self.retry_connection)
         self._top_bar.notificationsRequested.connect(lambda: self.show_page(MAILBOX_ID))
         host.notifications.unreadChanged.connect(self._top_bar.set_unread)
+        host.notifications.unreadChanged.connect(set_taskbar_badge)
         host.notifications.received.connect(self._on_messages_received)
         host.session.onlineChanged.connect(self._on_online_changed)
         self._install_shortcuts()
@@ -177,6 +193,8 @@ class ShellWindow(QMainWindow):
         else:
             text = f"{len(messages)} nouveaux messages dans ta messagerie."
         self._toast.show_message(text, NotifyLevel.INFO)
+        if not self.isActiveWindow():
+            QApplication.alert(self)
         if not self.isActiveWindow() and self._settings.get(DESKTOP_NOTIFICATIONS_KEY, True) is not False:
             tray = self._desktop_tray()
             if tray is not None:
@@ -259,6 +277,7 @@ class ShellWindow(QMainWindow):
             tool.shutdown()
         if self._tray is not None:
             self._tray.hide()
+        set_taskbar_badge(0)
         self._settings.set("window_geometry", bytes(self.saveGeometry().toHex()).decode("ascii"))
         self._settings.set("last_page", self._current or HOME_ID)
         try:

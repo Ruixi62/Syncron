@@ -60,10 +60,20 @@ class Breakdown:
         return ceil_div(self.quantity, self.stack_size)
 
     def text(self) -> str:
+        """« 1 ligne + 1 stack + 8 objets seuls »."""
         pieces = [f"{format_quantity(count)} {unit.label(count)}" for unit, count in self.parts if count]
         if self.remainder or not pieces:
-            pieces.append(format_quantity(self.remainder))
+            pieces.append(loose_label(self.remainder))
         return " + ".join(pieces)
+
+
+def loose_label(count: int) -> str:
+    """Objets qui ne remplissent pas un stack : « 8 objets seuls », « 1 objet seul »."""
+    return f"{format_quantity(count)} objet{'s' if count > 1 else ''} seul{'s' if count > 1 else ''}"
+
+
+def unit_by_id(unit_id: str) -> Unit:
+    return next(unit for unit in UNITS if unit.id == unit_id)
 
 
 def _check(quantity: int, stack_size: int) -> None:

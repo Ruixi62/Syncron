@@ -55,6 +55,7 @@ class LiveServer:
             admin_discord_ids="100000000000000001",
             media_dir=tmp / "media",
             dev_login=True,
+            auth_rate_limit=0,
         )
         app = create_app(self.settings, Database(self.database_url), self.discord)
         config = uvicorn.Config(app, host="127.0.0.1", port=self.port, log_level="warning", lifespan="on")
@@ -86,7 +87,7 @@ class LiveServer:
                 self.db_name,
             )
         )
-        self.settings.min_client_version = "4.1.0"
+        self.settings.min_client_version = "4.3.0"
         self.settings.nation_name = ""
 
     def stop(self) -> None:

@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPlainTextEdit,
     QScrollArea,
     QSpinBox,
@@ -34,7 +33,7 @@ from PySide6.QtWidgets import (
 from syncron_client.tools.craft.admin.context import CraftAdminContext
 from syncron_client.ui.entity_list import EntityList
 from syncron_client.ui.tables import ROW_HEIGHT
-from syncron_client.ui.widgets import Banner, Card, SegmentedControl, button, icon_button, label
+from syncron_client.ui.widgets import Banner, Card, SegmentedControl, ask, button, compact_combo, icon_button, label
 from syncron_core.catalog import ID_PATTERN, ID_RULE
 from syncron_core.duration import DurationError, format_duration, parse_duration
 from syncron_core.models.item import Item
@@ -94,11 +93,13 @@ class EntityEditor(QWidget):
         self.delete_button = button("Supprimer", "trash", "ghost")
         self.delete_button.setStyleSheet("QPushButton { color: #f2555a; }")
         self.delete_button.clicked.connect(self._delete)
-        self.revert_button = button("Annuler les modifications", None, "ghost")
+        self.revert_button = button("Annuler", None, "ghost")
+        self.revert_button.setToolTip("Annuler les modifications")
         self.revert_button.clicked.connect(lambda: self.load(self._current))
         self.save_button = button("Enregistrer", "save", "primary")
         self.save_button.clicked.connect(self._save)
-        new_button = button(self.new_label, "plus")
+        new_button = button("Nouveau", "plus")
+        new_button.setToolTip(self.new_label)
         new_button.clicked.connect(lambda: self._confirm_leave() and self.load(None))
 
         header = QHBoxLayout()
@@ -133,7 +134,7 @@ class EntityEditor(QWidget):
         inner_layout.addStretch(1)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setWidget(inner)
         self.form_card.body.addWidget(scroll, 1)
         self.form_card.body.addLayout(actions)
@@ -144,8 +145,8 @@ class EntityEditor(QWidget):
         splitter.addWidget(self.list)
         splitter.addWidget(self.form_card)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([320, 900])
-        self.list.setMinimumWidth(260)
+        splitter.setSizes([280, 900])
+        self.list.setMinimumWidth(200)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(splitter)
@@ -220,8 +221,7 @@ class EntityEditor(QWidget):
     def _confirm_leave(self) -> bool:
         if not self._dirty:
             return True
-        answer = QMessageBox.question(self, "Modifications non enregistrées", "Abandonner les modifications en cours ?")
-        return answer == QMessageBox.StandardButton.Yes
+        return ask(self, "Modifications non enregistrées", "Abandonner les modifications en cours ?")
 
     def _on_selected(self, key: str) -> None:
         if key == self._current:
@@ -264,8 +264,7 @@ class EntityEditor(QWidget):
         key = self._current
         if key is None:
             return
-        answer = QMessageBox.question(self, "Supprimer", f"Supprimer définitivement « {key} » ?")
-        if answer != QMessageBox.StandardButton.Yes:
+        if not ask(self, "Supprimer", f"Supprimer définitivement « {key} » ?"):
             return
 
         def deleted(_result) -> None:
@@ -409,20 +408,18 @@ class LinesTable(QWidget):
     def add_line(self, key: str | None = None, value: int = 1, notify: bool = True) -> None:
         row = self.table.rowCount()
         self.table.insertRow(row)
-        combo = QComboBox()
-        combo.setEditable(True)
-        combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        combo = compact_combo(editable=True)
         combo.addItem("— choisir —", None)
         for choice_key, text in self._choices:
-            combo.addItem(f"{text}  ·  {choice_key}", choice_key)
+            combo.addItem(text, choice_key)
+            combo.setItemData(combo.count() - 1, choice_key, Qt.ItemDataRole.ToolTipRole)
         if key is not None:
             index = combo.findData(key)
             if index < 0:
                 combo.addItem(f"{key} (inconnu)", key)
                 index = combo.count() - 1
             combo.setCurrentIndex(index)
-        combo.completer().setFilterMode(Qt.MatchFlag.MatchContains)
-        combo.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        combo.lineEdit().setCursorPosition(0)
         spin = QSpinBox()
         spin.setRange(1, self._maximum)
         spin.setValue(value)
@@ -464,9 +461,7 @@ class ItemEditor(EntityEditor):
 
     def build_form(self, layout: QVBoxLayout) -> None:
         self.type_field = SegmentedControl([("Ressource primaire", "gem"), ("Craftable", "hammer")])
-        self.category_field = QComboBox()
-        self.category_field.setEditable(True)
-        self.category_field.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.category_field = compact_combo(editable=True)
         self.image_field = ImageField(self)
         self.form.addRow("Type", self.type_field)
         self.form.addRow("Catégorie", self.category_field)
@@ -478,7 +473,7 @@ class ItemEditor(EntityEditor):
         recipe_form = QFormLayout()
         recipe_form.setHorizontalSpacing(14)
         recipe_form.setVerticalSpacing(10)
-        self.station_field = QComboBox()
+        self.station_field = compact_combo()
         self.time_field = QLineEdit()
         self.time_field.setPlaceholderText("instant, 30s, 5m, 1h30…")
         self.time_preview = label("", "faint")
@@ -634,7 +629,7 @@ class SkillEditor(EntityEditor):
     new_label = "Nouvelle compétence"
 
     def build_form(self, layout: QVBoxLayout) -> None:
-        self.kind_field = QComboBox()
+        self.kind_field = compact_combo()
         for value, text in KIND_LABELS:
             self.kind_field.addItem(text, value)
         self.max_level_field = QSpinBox()

@@ -1,4 +1,15 @@
-"""Gestion de la R&D : domaines (paliers, progression, recherche en cours) et contenu de chaque palier."""
+"""Gestion de la R&D.
+
+    ┌ Domaines ┐ ┌ Domaine : nom, icône, paliers, terminés, recherche en cours, compétence Craft ┐
+    │ Global   │ └──────────────────────────────────────────────────────────────────────────────┘
+    │ Militaire│ ┌ Paliers : [1] [2] [3] … (couleur = état, liseré = renseigné)                  ┐
+    │ …        │ │ Palier 3 · nom · description                                                  │
+    └──────────┘ │ Conditions : texte, objet, quantité, réunis, remplie   (+ Ajouter)            │
+                 │ Récompenses : texte, objet, quantité                    (+ Ajouter)            │
+                 │ [Reprendre le palier précédent]                 [Enregistrer le palier]        │
+                 └──────────────────────────────────────────────────────────────────────────────┘
+Chaque ligne est un petit bloc sur deux rangées : rien ne déborde, quelle que soit la largeur.
+"""
 
 from __future__ import annotations
 
@@ -6,20 +17,19 @@ import re
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
-    QComboBox,
-    QFormLayout,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLineEdit,
-    QMessageBox,
     QPlainTextEdit,
+    QPushButton,
     QScrollArea,
     QSpinBox,
     QSplitter,
-    QTableWidget,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -29,12 +39,21 @@ from syncron_client.platform.tool import ToolHost
 from syncron_client.tools.research.model import Domain, Line, Tier, parse_domains
 from syncron_client.ui import icons
 from syncron_client.ui.entity_list import EntityList
-from syncron_client.ui.tables import ROW_HEIGHT
-from syncron_client.ui.theme import COLORS
-from syncron_client.ui.widgets import Banner, Card, button, icon_button, label
+from syncron_client.ui.theme import COLORS, TONES
+from syncron_client.ui.widgets import (
+    Banner,
+    Card,
+    Chip,
+    FlowWidget,
+    ask,
+    button,
+    compact_combo,
+    icon_button,
+    label,
+)
 from syncron_core.catalog_service import CatalogService
 from syncron_core.models.reference import SkillKind
-from syncron_core.text import normalize
+from syncron_core.text import format_quantity, normalize
 
 DOMAIN_ICONS = (
     ("globe", "Globe"),
@@ -47,138 +66,247 @@ DOMAIN_ICONS = (
     ("gem", "Gemme"),
 )
 DOMAIN_ID = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,31}$")
+MAX_SPIN = 2_000_000_000
+
+
+def _spin(prefix: str) -> QSpinBox:
+    spin = QSpinBox()
+    spin.setRange(0, MAX_SPIN)
+    spin.setGroupSeparatorShown(True)
+    spin.setSpecialValueText(f"{prefix} —")
+    spin.setPrefix(f"{prefix} ")
+    spin.setMinimumWidth(130)
+    return spin
+
+
+class LineRow(QFrame):
+    """Une condition ou une récompense, sur deux rangées."""
+
+    changed = Signal()
+    removeRequested = Signal(object)
+    moveRequested = Signal(object, int)
+
+    def __init__(self, line: Line, items: list[tuple[str, str]], condition: bool, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.line_id = line.id
+        self.condition = condition
+        self.setStyleSheet(
+            f"LineRow {{ background: {COLORS.surface}; border: 1px solid {COLORS.border}; border-radius: 10px; }}"
+        )
+        self.text_field = QLineEdit(line.text)
+        self.text_field.setMaxLength(300)
+        self.text_field.setPlaceholderText("Déposer, casser, avoir 10 membres…" if condition else "Débloque…, +5 % de…")
+        self.item_field = compact_combo(editable=True, min_chars=10)
+        self.item_field.addItem("Aucun objet", None)
+        for key, name in items:
+            self.item_field.addItem(name, key)
+            self.item_field.setItemData(self.item_field.count() - 1, key, Qt.ItemDataRole.ToolTipRole)
+        if line.item_id:
+            index = self.item_field.findData(line.item_id)
+            if index < 0:
+                self.item_field.addItem(f"{line.item_id} (inconnu)", line.item_id)
+                index = self.item_field.count() - 1
+            self.item_field.setCurrentIndex(index)
+        self.item_field.lineEdit().setCursorPosition(0)
+        self.item_field.setToolTip("Objet du catalogue Craft (facultatif)")
+        self.quantity_field = _spin("Quantité")
+        self.quantity_field.setValue(line.quantity or 0)
+        self.progress_field = _spin("Réunis")
+        self.progress_field.setValue(line.progress or 0)
+        self.done_field = QCheckBox("Remplie")
+        self.done_field.setChecked(line.done)
+        up = icon_button("chevron-up", "Monter", 14)
+        down = icon_button("chevron-down", "Descendre", 14)
+        remove = icon_button("close", "Retirer", 14)
+        up.clicked.connect(lambda: self.moveRequested.emit(self, -1))
+        down.clicked.connect(lambda: self.moveRequested.emit(self, 1))
+        remove.clicked.connect(lambda: self.removeRequested.emit(self))
+
+        grid = QGridLayout(self)
+        grid.setContentsMargins(10, 8, 8, 8)
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(6)
+        grid.addWidget(self.text_field, 0, 0, 1, 2)
+        tools = QHBoxLayout()
+        tools.setSpacing(0)
+        tools.addWidget(up)
+        tools.addWidget(down)
+        tools.addWidget(remove)
+        grid.addLayout(tools, 0, 2)
+        grid.addWidget(self.item_field, 1, 0)
+        grid.addWidget(self.quantity_field, 1, 1)
+        if condition:
+            follow = QHBoxLayout()
+            follow.setSpacing(10)
+            follow.addWidget(self.progress_field)
+            follow.addWidget(self.done_field)
+            follow.addStretch(1)
+            grid.addLayout(follow, 2, 0, 1, 3)
+        else:
+            self.progress_field.hide()
+            self.done_field.hide()
+        grid.setColumnStretch(0, 3)
+        grid.setColumnStretch(1, 2)
+
+        for signal in (
+            self.text_field.textChanged,
+            self.item_field.currentIndexChanged,
+            self.quantity_field.valueChanged,
+            self.progress_field.valueChanged,
+            self.done_field.toggled,
+        ):
+            signal.connect(self.changed)
+        self.quantity_field.valueChanged.connect(self._update)
+        self.progress_field.valueChanged.connect(self._update)
+        self._update()
+
+    def line(self) -> Line:
+        quantity = self.quantity_field.value() or None
+        progress = self.progress_field.value() if quantity and self.condition else None
+        reached = quantity is not None and (progress or 0) >= quantity
+        done = self.condition and (self.done_field.isChecked() or reached)
+        item_id = self.item_field.currentData() or None
+        return Line(self.text_field.text().strip(), quantity, item_id, done, progress, self.line_id)
+
+    def is_blank(self) -> bool:
+        line = self.line()
+        return not line.text and not line.item_id
+
+    def _update(self, *_args) -> None:
+        quantity = self.quantity_field.value()
+        self.progress_field.setEnabled(quantity > 0)
+        if self.condition and quantity:
+            self.progress_field.setSuffix(f" / {format_quantity(quantity)}")
+            if self.progress_field.value() >= quantity and not self.done_field.isChecked():
+                self.done_field.setChecked(True)
+        else:
+            self.progress_field.setSuffix("")
 
 
 class LinesEditor(QWidget):
-    """Lignes éditables d'un palier : texte, objet du catalogue (facultatif), quantité, réalisée."""
+    """Liste de LineRow avec bouton d'ajout ; `lines()` renvoie les lignes remplies, dans l'ordre."""
 
     changed = Signal()
 
     def __init__(self, add_label: str, with_done: bool, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._with_done = with_done
+        self._condition = with_done
         self._items: list[tuple[str, str]] = []
-        headers = ["TEXTE", "OBJET (FACULTATIF)", "QUANTITÉ"] + (["FAIT"] if with_done else []) + [""]
-        self.table = QTableWidget(0, len(headers))
-        self.table.setHorizontalHeaderLabels(headers)
-        self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(ROW_HEIGHT)
-        self.table.setShowGrid(False)
-        self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        self.table.setColumnWidth(1, 180)
-        for column in range(2, len(headers)):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(2, 112)
-        if with_done:
-            self.table.setColumnWidth(3, 56)
-        self.table.setColumnWidth(len(headers) - 1, 44)
+        self._rows: list[LineRow] = []
+        self._layout = QVBoxLayout()
+        self._layout.setSpacing(6)
+        self.empty = label("Aucune pour l'instant.", "faint")
         add = button(add_label, "plus", "ghost")
         add.clicked.connect(lambda: self.add_line(Line("")))
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        layout.addWidget(self.table)
-        layout.addWidget(add, 0, Qt.AlignmentFlag.AlignLeft)
-        self._fit()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(6)
+        outer.addWidget(self.empty)
+        outer.addLayout(self._layout)
+        outer.addWidget(add, 0, Qt.AlignmentFlag.AlignLeft)
+
+    @property
+    def rows(self) -> list[LineRow]:
+        return list(self._rows)
 
     def set_items(self, items: list[tuple[str, str]]) -> None:
         self._items = items
 
-    def set_lines(self, lines: tuple[Line, ...]) -> None:
-        self.table.setRowCount(0)
+    def set_lines(self, lines: tuple[Line, ...] | list[Line]) -> None:
+        for row in self._rows:
+            row.hide()
+            row.setParent(None)
+            row.deleteLater()
+        self._rows = []
         for line in lines:
             self.add_line(line, notify=False)
-        self._fit()
+        self.empty.setVisible(not self._rows)
 
     def lines(self) -> list[Line]:
-        result = []
-        for row in range(self.table.rowCount()):
-            text: QLineEdit = self.table.cellWidget(row, 0)
-            item: QComboBox = self.table.cellWidget(row, 1)
-            quantity: QSpinBox = self.table.cellWidget(row, 2)
-            done = self._done_box(row)
-            line = Line(
-                text.text().strip(),
-                quantity.value() or None,
-                item.currentData() or None,
-                bool(done and done.isChecked()),
-            )
-            if line.text or line.item_id:
-                result.append(line)
-        return result
+        return [row.line() for row in self._rows if not row.is_blank()]
 
-    def add_line(self, line: Line, notify: bool = True) -> None:
-        row = self.table.rowCount()
-        self.table.insertRow(row)
-        text = QLineEdit(line.text)
-        text.setMaxLength(300)
-        text.setPlaceholderText("Avoir 10 membres, déposer…")
-        item = QComboBox()
-        item.setEditable(True)
-        item.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        item.addItem("—", None)
-        for key, name in self._items:
-            item.addItem(name, key)
-            item.setItemData(item.count() - 1, key, Qt.ItemDataRole.ToolTipRole)
-        if line.item_id:
-            index = item.findData(line.item_id)
-            if index < 0:
-                item.addItem(f"{line.item_id} (inconnu)", line.item_id)
-                index = item.count() - 1
-            item.setCurrentIndex(index)
-        item.lineEdit().setCursorPosition(0)
-        item.completer().setFilterMode(Qt.MatchFlag.MatchContains)
-        item.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        quantity = QSpinBox()
-        quantity.setRange(0, 2_000_000_000)
-        quantity.setGroupSeparatorShown(True)
-        quantity.setSpecialValueText("—")
-        quantity.setValue(line.quantity or 0)
-        remove: QToolButton = icon_button("close", "Retirer la ligne", 14)
-        remove.clicked.connect(lambda: self._remove(text))
-        self.table.setCellWidget(row, 0, text)
-        self.table.setCellWidget(row, 1, item)
-        self.table.setCellWidget(row, 2, quantity)
-        if self._with_done:
-            done = QCheckBox()
-            done.setChecked(line.done)
-            done.setToolTip("Condition remplie")
-            holder = QWidget()
-            holder_layout = QHBoxLayout(holder)
-            holder_layout.setContentsMargins(14, 0, 0, 0)
-            holder_layout.addWidget(done)
-            self.table.setCellWidget(row, 3, holder)
-            done.toggled.connect(self.changed)
-        self.table.setCellWidget(row, self.table.columnCount() - 1, remove)
-        text.textChanged.connect(self.changed)
-        item.currentIndexChanged.connect(self.changed)
-        quantity.valueChanged.connect(self.changed)
-        self._fit()
+    def add_line(self, line: Line, notify: bool = True) -> LineRow:
+        row = LineRow(line, self._items, self._condition)
+        row.changed.connect(self.changed)
+        row.removeRequested.connect(self._remove)
+        row.moveRequested.connect(self._move)
+        self._rows.append(row)
+        self._layout.addWidget(row)
+        self.empty.hide()
         if notify:
             self.changed.emit()
-            text.setFocus()
+            row.text_field.setFocus()
+        return row
 
-    def _done_box(self, row: int) -> QCheckBox | None:
-        if not self._with_done:
-            return None
-        holder = self.table.cellWidget(row, 3)
-        return holder.findChild(QCheckBox) if holder is not None else None
-
-    def _remove(self, text: QLineEdit) -> None:
-        for row in range(self.table.rowCount()):
-            if self.table.cellWidget(row, 0) is text:
-                self.table.removeRow(row)
-                break
-        self._fit()
+    def _remove(self, row: LineRow) -> None:
+        self._rows.remove(row)
+        row.hide()
+        row.setParent(None)
+        row.deleteLater()
+        self.empty.setVisible(not self._rows)
         self.changed.emit()
 
-    def _fit(self) -> None:
-        rows = max(self.table.rowCount(), 1)
-        self.table.setFixedHeight(self.table.horizontalHeader().height() + rows * ROW_HEIGHT + 6)
+    def _move(self, row: LineRow, delta: int) -> None:
+        index = self._rows.index(row)
+        target = index + delta
+        if not 0 <= target < len(self._rows):
+            return
+        self._rows.insert(target, self._rows.pop(index))
+        self._layout.removeWidget(row)
+        self._layout.insertWidget(target, row)
+        self.changed.emit()
+
+
+class TierStrip(QWidget):
+    """Boutons numérotés des paliers ; couleur = état, liseré = palier renseigné."""
+
+    chosen = Signal(int)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._flow = FlowWidget(spacing=6)
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+        self._group.idClicked.connect(self.chosen)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._flow)
+
+    def set_domain(self, domain: Domain | None, selected: int | None) -> None:
+        for tier_button in self._group.buttons():
+            self._group.removeButton(tier_button)
+        self._flow.clear()
+        if domain is None:
+            return
+        for tier in domain.tiers:
+            status = domain.status(tier.level)
+            color, background = TONES[status.tone]
+            filled = not tier.is_empty
+            tier_button = QPushButton(str(tier.level))
+            tier_button.setCheckable(True)
+            tier_button.setFixedSize(40, 34)
+            tier_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            tooltip = f"Palier {tier.level} · {status.label}" + (f" · {tier.name}" if tier.name else "")
+            tier_button.setToolTip(tooltip + ("" if filled else " · vide"))
+            underline = f"border-bottom: 3px solid {color};" if filled else ""
+            tier_button.setStyleSheet(
+                f"QPushButton {{ padding: 0; color: {color}; background: {background}; border-radius: 9px;"
+                f" border: 1px solid {COLORS.border}; {underline} font-weight: 600; }}"
+                f"QPushButton:checked {{ border: 2px solid {COLORS.accent}; {underline} }}"
+            )
+            self._group.addButton(tier_button, tier.level)
+            self._flow.add(tier_button)
+        if selected is not None and self._group.button(selected) is not None:
+            self._group.button(selected).setChecked(True)
+
+    def select(self, level: int | None) -> None:
+        tier_button = self._group.button(level) if level else None
+        if tier_button is not None:
+            tier_button.setChecked(True)
+
+    def current(self) -> int | None:
+        level = self._group.checkedId()
+        return level if level > 0 else None
 
 
 class ResearchAdmin(QWidget):
@@ -190,15 +318,15 @@ class ResearchAdmin(QWidget):
         self._catalog = catalog
         self._domains: dict[str, Domain] = {}
         self._current: str | None = None
+        self._level: int | None = None
         self._loading = False
         self._domain_dirty = False
         self._tier_dirty = False
         self._pending_level: int | None = None
-        self._shown_level: int | None = None
 
-        self.list = EntityList("DOMAINES", "Rechercher un domaine…")
+        self.list = EntityList("DOMAINES", "Rechercher…")
         self.list.selected.connect(self._on_selected)
-        self.list.setMinimumWidth(200)
+        self.list.setMinimumWidth(190)
 
         # -- domaine --
         self.domain_banner = Banner("danger")
@@ -209,13 +337,16 @@ class ResearchAdmin(QWidget):
         new_button.clicked.connect(lambda: self._confirm_leave() and self.load(None))
         self.name_field = QLineEdit()
         self.name_field.setMaxLength(80)
+        self.name_field.setPlaceholderText("Nom")
         self.id_field = QLineEdit()
-        self.id_field.setPlaceholderText("identifiant (minuscules)")
-        self.icon_field = QComboBox()
+        self.id_field.setPlaceholderText("identifiant")
+        self.icon_field = compact_combo(min_chars=8)
         for icon_name, text in DOMAIN_ICONS:
             self.icon_field.addItem(icons.icon(icon_name, COLORS.accent, 16), text, icon_name)
-        self.description_field = QPlainTextEdit()
-        self.description_field.setFixedHeight(64)
+        self.skill_field = compact_combo(min_chars=10)
+        self.skill_field.setToolTip(
+            "Les recettes qui exigent cette compétence au niveau N s'affichent sous le palier N."
+        )
         self.tier_count_field = QSpinBox()
         self.tier_count_field.setRange(0, 100)
         self.tier_count_field.setSuffix(" palier(s)")
@@ -224,95 +355,121 @@ class ResearchAdmin(QWidget):
         self.completed_field.setSuffix(" terminé(s)")
         self.active_field = QCheckBox("Recherche en cours")
         self.active_field.setToolTip("Une seule recherche à la fois pour le pays : lancer celle-ci arrête l'autre.")
-        self.skill_field = QComboBox()
-        self.notify_field = QCheckBox("Prévenir le pays des changements de progression")
-        self.notify_field.setToolTip("Palier terminé, recherche lancée : un message part dans la messagerie de chacun.")
+        self.description_field = QPlainTextEdit()
+        self.description_field.setPlaceholderText("Description (facultative)")
+        self.description_field.setFixedHeight(56)
+        self.notify_field = QCheckBox("Prévenir le pays si la progression change")
         self.notify_field.setChecked(True)
-        domain_form = QFormLayout()
-        domain_form.setHorizontalSpacing(14)
-        domain_form.setVerticalSpacing(10)
-        domain_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        domain_form.addRow("Nom", self.name_field)
-        domain_form.addRow("Identifiant", self.id_field)
-        domain_form.addRow("Icône", self.icon_field)
-        domain_form.addRow("Description", self.description_field)
-        counts = QHBoxLayout()
-        counts.addWidget(self.tier_count_field, 1)
-        counts.addWidget(self.completed_field, 1)
-        domain_form.addRow("Paliers", counts)
-        domain_form.addRow("", self.active_field)
-        domain_form.addRow("Compétence Craft", self.skill_field)
-        domain_form.addRow("", self.notify_field)
-        self.delete_button = button("Supprimer le domaine", "trash", "ghost")
-        self.delete_button.setStyleSheet("QPushButton { color: #f2555a; }")
+        self.delete_button = button("Supprimer", "trash", "ghost")
+        self.delete_button.setStyleSheet(f"QPushButton {{ color: {COLORS.danger}; }}")
         self.delete_button.clicked.connect(self._delete)
-        self.save_domain_button = button("Enregistrer le domaine", "save", "primary")
+        self.save_domain_button = button("Enregistrer", "save", "primary")
+        self.save_domain_button.setToolTip("Enregistrer le domaine")
         self.save_domain_button.clicked.connect(self.save_domain)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(6)
+        grid.addWidget(label("Nom", "faint"), 0, 0)
+        grid.addWidget(label("Icône", "faint"), 0, 1)
+        grid.addWidget(self.name_field, 1, 0)
+        grid.addWidget(self.icon_field, 1, 1)
+        grid.addWidget(label("Paliers", "faint"), 2, 0)
+        grid.addWidget(label("Avancement", "faint"), 2, 1)
+        grid.addWidget(self.tier_count_field, 3, 0)
+        grid.addWidget(self.completed_field, 3, 1)
+        grid.addWidget(label("Compétence Craft liée", "faint"), 4, 0)
+        grid.addWidget(self.skill_field, 5, 0)
+        grid.addWidget(self.active_field, 5, 1)
+        self._id_label = label("Identifiant", "faint")
+        grid.addWidget(self._id_label, 6, 0)
+        grid.addWidget(self.id_field, 7, 0)
+        grid.addWidget(self.description_field, 8, 0, 1, 2)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        header = QHBoxLayout()
+        header.addWidget(self.heading, 1)
+        header.addWidget(new_button)
         domain_actions = QHBoxLayout()
         domain_actions.addWidget(self.delete_button)
         domain_actions.addStretch(1)
         domain_actions.addWidget(self.save_domain_button)
-        header = QHBoxLayout()
-        header.addWidget(self.heading, 1)
-        header.addWidget(new_button)
-        domain_card = Card(padding=20, spacing=12)
+        domain_card = Card(padding=18, spacing=10)
         domain_card.body.addLayout(header)
         domain_card.body.addWidget(self.domain_banner)
-        domain_card.body.addLayout(domain_form)
+        domain_card.body.addLayout(grid)
+        domain_card.body.addWidget(self.notify_field)
         domain_card.body.addLayout(domain_actions)
 
-        # -- palier --
+        # -- paliers --
+        self.strip = TierStrip()
+        self.strip.chosen.connect(self._tier_chosen)
         self.tier_banner = Banner("danger")
         self.tier_banner.hide()
-        self.tier_field = QComboBox()
-        self.tier_field.currentIndexChanged.connect(self._tier_chosen)
+        self.tier_title = label("", "heading")
+        self.tier_status = Chip("", "neutral")
         self.tier_name_field = QLineEdit()
         self.tier_name_field.setMaxLength(120)
         self.tier_name_field.setPlaceholderText("Nom du palier (facultatif)")
         self.tier_description_field = QPlainTextEdit()
-        self.tier_description_field.setFixedHeight(56)
+        self.tier_description_field.setPlaceholderText("Description du palier (facultative)")
+        self.tier_description_field.setFixedHeight(52)
         self.conditions = LinesEditor("Ajouter une condition", with_done=True)
         self.rewards = LinesEditor("Ajouter une récompense", with_done=False)
+        self.copy_previous_button = button("Reprendre le palier précédent", "copy", "ghost")
+        self.copy_previous_button.setToolTip("Copie ses conditions et récompenses (sans la progression)")
+        self.copy_previous_button.clicked.connect(self.copy_previous)
         self.save_tier_button = button("Enregistrer le palier", "save", "primary")
         self.save_tier_button.clicked.connect(self.save_tier)
+        save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        save_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        save_shortcut.activated.connect(self._save_current)
         tier_head = QHBoxLayout()
-        tier_head.addWidget(label("PALIER", "overline"))
-        tier_head.addWidget(self.tier_field)
+        tier_head.addWidget(self.tier_title)
+        tier_head.addWidget(self.tier_status)
         tier_head.addWidget(self.tier_name_field, 1)
-        self.tier_card = Card(padding=20, spacing=10)
-        self.tier_card.body.addLayout(tier_head)
-        self.tier_card.body.addWidget(self.tier_banner)
-        self.tier_card.body.addWidget(self.tier_description_field)
-        self.tier_card.body.addWidget(label("CONDITIONS", "overline"))
-        self.tier_card.body.addWidget(self.conditions)
-        self.tier_card.body.addWidget(label("RÉCOMPENSES", "overline"))
-        self.tier_card.body.addWidget(self.rewards)
+        self._tier_editor = QWidget()
+        editor = QVBoxLayout(self._tier_editor)
+        editor.setContentsMargins(0, 6, 0, 0)
+        editor.setSpacing(10)
+        editor.addLayout(tier_head)
+        editor.addWidget(self.tier_banner)
+        editor.addWidget(self.tier_description_field)
+        editor.addWidget(label("CONDITIONS", "overline"))
+        editor.addWidget(self.conditions)
+        editor.addWidget(label("RÉCOMPENSES", "overline"))
+        editor.addWidget(self.rewards)
         tier_actions = QHBoxLayout()
-        tier_actions.addWidget(
-            label("Les quantités s'affichent aussi en stacks et coffres pour les membres.", "faint"), 1
-        )
+        tier_actions.addWidget(self.copy_previous_button)
+        tier_actions.addStretch(1)
         tier_actions.addWidget(self.save_tier_button)
-        self.tier_card.body.addLayout(tier_actions)
+        editor.addLayout(tier_actions)
+        self.tiers_hint = label("", "faint", wrap=True)
+        tiers_card = Card(padding=18, spacing=10)
+        tiers_card.body.addWidget(label("PALIERS", "overline"))
+        tiers_card.body.addWidget(self.strip)
+        tiers_card.body.addWidget(self.tiers_hint)
+        tiers_card.body.addWidget(self._tier_editor)
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 4, 0)
-        content_layout.setSpacing(16)
+        content_layout.setContentsMargins(0, 0, 8, 0)
+        content_layout.setSpacing(14)
         content_layout.addWidget(domain_card)
-        content_layout.addWidget(self.tier_card)
+        content_layout.addWidget(tiers_card)
         content_layout.addStretch(1)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setWidget(content)
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._scroll.setWidget(content)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
         splitter.setHandleWidth(16)
         splitter.addWidget(self.list)
-        splitter.addWidget(scroll)
+        splitter.addWidget(self._scroll)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([230, 970])
+        splitter.setSizes([220, 980])
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(splitter)
@@ -345,7 +502,7 @@ class ResearchAdmin(QWidget):
 
     @property
     def current_level(self) -> int | None:
-        return self.tier_field.currentData()
+        return self._level
 
     def is_dirty(self) -> bool:
         return self._domain_dirty or self._tier_dirty
@@ -358,7 +515,7 @@ class ResearchAdmin(QWidget):
         entries = [(d.id, d.name, d.progress_text, icons.icon(d.icon, COLORS.accent, 24)) for d in domains]
         self.list.set_entries(entries, keep=self._current)
         if self._current in self._domains and not self.is_dirty():
-            self.load(self._current, self._pending_level or self.current_level)
+            self.load(self._current, self._pending_level or self._level)
             self.list.select(self._current, emit=False)
             self._pending_level = None
         elif self._current is None and domains and not self.is_dirty():
@@ -384,11 +541,11 @@ class ResearchAdmin(QWidget):
         self._current = domain.id if domain else None
         self._loading = True
         self.domain_banner.hide()
-        self.tier_banner.hide()
         self.heading.setText(domain.name if domain else "Nouveau domaine")
         self.name_field.setText(domain.name if domain else "")
         self.id_field.setText(domain.id if domain else "")
-        self.id_field.setReadOnly(domain is not None)
+        self.id_field.setVisible(domain is None)
+        self._id_label.setVisible(domain is None)
         self.icon_field.setCurrentIndex(max(self.icon_field.findData(domain.icon if domain else "flask"), 0))
         self.description_field.setPlainText(domain.description if domain else "")
         self.tier_count_field.setValue(domain.tier_count if domain else 0)
@@ -400,22 +557,20 @@ class ResearchAdmin(QWidget):
         items = [(item.id, item.name) for item in self._catalog.list_items()]
         self.conditions.set_items(items)
         self.rewards.set_items(items)
-        self.tier_field.blockSignals(True)
-        self.tier_field.clear()
-        for tier in domain.tiers if domain else ():
-            self.tier_field.addItem(f"Palier {tier.level}", tier.level)
-        self.tier_field.blockSignals(False)
-        self.tier_card.setEnabled(bool(domain and domain.tier_count))
         self._loading = False
         self._domain_dirty = False
         if domain and domain.tier_count:
-            index = self.tier_field.findData(level) if level else -1
-            if index < 0:
-                index = min(domain.completed, domain.tier_count - 1)
-            self.tier_field.setCurrentIndex(index)
-            self._tier_chosen(index)
+            default = min(domain.completed + 1, domain.tier_count)
+            chosen = level if level and 1 <= level <= domain.tier_count else default
+            self.strip.set_domain(domain, chosen)
+            self.tiers_hint.setText(
+                "Choisis un palier. Vert : terminé, turquoise : en cours, bleu : prochain. Liseré : palier renseigné."
+            )
+            self._show_tier(domain, domain.tier(chosen))
         else:
-            self._show_tier(None)
+            self.strip.set_domain(None, None)
+            self.tiers_hint.setText("Indique le nombre de paliers puis enregistre le domaine pour remplir ses paliers.")
+            self._show_tier(domain, None)
 
     # -- enregistrement ----------------------------------------------------------------------
 
@@ -444,7 +599,7 @@ class ResearchAdmin(QWidget):
         if self._current is None and domain_id in self._domains:
             self._refuse(self.domain_banner, f"Le domaine « {domain_id} » existe déjà.")
             return
-        level = self.current_level
+        level = self._level
 
         def saved(raw: dict[str, Any]) -> None:
             self._domain_dirty = False
@@ -470,7 +625,7 @@ class ResearchAdmin(QWidget):
         }
 
     def save_tier(self) -> None:
-        domain_id, level = self._current, self.current_level
+        domain_id, level = self._current, self._level
         if domain_id is None or level is None:
             return
         payload = self.tier_payload()
@@ -487,6 +642,26 @@ class ResearchAdmin(QWidget):
             success=f"Palier {level} enregistré.",
         )
 
+    def copy_previous(self) -> None:
+        domain = self._domains.get(self._current or "")
+        if domain is None or not self._level or self._level < 2:
+            return
+        previous = domain.tier(self._level - 1)
+        if previous is None or previous.is_empty:
+            self._refuse(self.tier_banner, f"Le palier {self._level - 1} est vide.")
+            return
+        conditions = [Line(line.text, line.quantity, line.item_id) for line in previous.conditions]
+        rewards = [Line(line.text, line.quantity, line.item_id) for line in previous.rewards]
+        self.conditions.set_lines([*self.conditions.lines(), *conditions])
+        self.rewards.set_lines([*self.rewards.lines(), *rewards])
+        self._tier_dirty = True
+
+    def _save_current(self) -> None:
+        if self._tier_dirty:
+            self.save_tier()
+        elif self._domain_dirty:
+            self.save_domain()
+
     def _after_write(self, level: int | None) -> None:
         def reloaded(document: dict[str, Any]) -> None:
             domains = parse_domains(document)
@@ -501,12 +676,8 @@ class ResearchAdmin(QWidget):
         domain = self._domains.get(self._current or "")
         if domain is None:
             return
-        answer = QMessageBox.question(
-            self, "Supprimer", f"Supprimer le domaine « {domain.name} » et tous ses paliers ? C'est définitif."
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        self.delete_domain(domain.id)
+        if ask(self, "Supprimer", f"Supprimer le domaine « {domain.name} » et tous ses paliers ? C'est définitif."):
+            self.delete_domain(domain.id)
 
     def delete_domain(self, domain_id: str) -> None:
         def deleted(_result: Any) -> None:
@@ -529,32 +700,39 @@ class ResearchAdmin(QWidget):
         self.skill_field.addItem("Aucune", None)
         skills = sorted(self._catalog.skills(), key=lambda s: (s.kind is not SkillKind.RESEARCH, normalize(s.name)))
         for skill in skills:
-            self.skill_field.addItem(f"{skill.name}  ·  {skill.kind.label}", skill.id)
+            self.skill_field.addItem(skill.name, skill.id)
+            self.skill_field.setItemData(self.skill_field.count() - 1, skill.kind.label, Qt.ItemDataRole.ToolTipRole)
         index = self.skill_field.findData(selected) if selected else 0
         if index < 0:
             self.skill_field.addItem(f"{selected} (inconnue)", selected)
             index = self.skill_field.count() - 1
         self.skill_field.setCurrentIndex(index)
-        self.skill_field.setToolTip(
-            "Les recettes qui exigent cette compétence au niveau N sont affichées sous le palier N."
-        )
 
-    def _tier_chosen(self, _index: int) -> None:
-        domain = self._domains.get(self._current or "")
-        level = self.current_level
-        if not self._loading and self._tier_dirty and not self._confirm_tier_leave():
-            self.tier_field.blockSignals(True)
-            self.tier_field.setCurrentIndex(self.tier_field.findData(self._shown_level))
-            self.tier_field.blockSignals(False)
+    def _tier_chosen(self, level: int) -> None:
+        if level == self._level:
             return
-        self._show_tier(domain.tier(level) if domain and level else None)
+        if self._tier_dirty and not ask(self, "Palier non enregistré", "Abandonner les modifications de ce palier ?"):
+            self.strip.select(self._level)
+            return
+        domain = self._domains.get(self._current or "")
+        self._show_tier(domain, domain.tier(level) if domain else None)
 
-    def _show_tier(self, tier: Tier | None) -> None:
-        self._shown_level = tier.level if tier else None
+    def select_tier(self, level: int) -> None:
+        """Comme un clic sur le bouton du palier."""
+        self.strip.select(level)
+        self._tier_chosen(level)
+
+    def _show_tier(self, domain: Domain | None, tier: Tier | None) -> None:
+        self._level = tier.level if tier else None
+        self._tier_editor.setVisible(tier is not None)
         self._loading = True
+        if tier is not None and domain is not None:
+            status = domain.status(tier.level)
+            self.tier_title.setText(f"Palier {tier.level}")
+            self.tier_status.set_content(status.label, status.tone, status.icon)
+            self.copy_previous_button.setEnabled(tier.level > 1)
         self.tier_name_field.setText(tier.name if tier else "")
         self.tier_description_field.setPlainText(tier.description if tier else "")
-        self.tier_description_field.setPlaceholderText("Description du palier (facultative)")
         self.conditions.set_lines(tier.conditions if tier else ())
         self.rewards.set_lines(tier.rewards if tier else ())
         self.tier_banner.hide()
@@ -572,12 +750,7 @@ class ResearchAdmin(QWidget):
     def _confirm_leave(self) -> bool:
         if not self.is_dirty():
             return True
-        answer = QMessageBox.question(self, "Modifications non enregistrées", "Abandonner les modifications en cours ?")
-        return answer == QMessageBox.StandardButton.Yes
-
-    def _confirm_tier_leave(self) -> bool:
-        answer = QMessageBox.question(self, "Palier non enregistré", "Abandonner les modifications de ce palier ?")
-        return answer == QMessageBox.StandardButton.Yes
+        return ask(self, "Modifications non enregistrées", "Abandonner les modifications en cours ?")
 
     def _refuse(self, banner: Banner, text: str) -> None:
         banner.set_text(text)

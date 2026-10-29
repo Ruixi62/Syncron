@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from syncron_client.paths import install_dir
 from syncron_client.settings import JsonSettingsStore
@@ -21,19 +22,30 @@ BUNDLED_CONFIG = "syncron.json"
 SERVER_URL_KEY = "server_url"
 
 
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def is_safe_server_url(url: str) -> bool:
+    """HTTPS obligatoire ; HTTP seulement vers cette machine (développement) : les jetons ne circulent pas en clair."""
+    parts = urlsplit(url)
+    if parts.scheme == "https":
+        return bool(parts.hostname)
+    return parts.scheme == "http" and parts.hostname in LOOPBACK_HOSTS
+
+
 def bundled_server_url(directory: Path | None = None) -> str | None:
     path = (directory or install_dir()) / BUNDLED_CONFIG
     try:
         value = json.loads(path.read_text(encoding="utf-8")).get(SERVER_URL_KEY)
     except (OSError, ValueError, AttributeError):
         return None
-    return value if isinstance(value, str) and value.startswith(("http://", "https://")) else None
+    return value if isinstance(value, str) and is_safe_server_url(value) else None
 
 
 def resolve_server_url(settings: JsonSettingsStore, directory: Path | None = None) -> str:
     candidates = (os.environ.get("SYNCRON_SERVER_URL"), settings.get(SERVER_URL_KEY), bundled_server_url(directory))
     for candidate in candidates:
-        if isinstance(candidate, str) and candidate.startswith(("http://", "https://")):
+        if isinstance(candidate, str) and is_safe_server_url(candidate):
             return candidate.rstrip("/")
     return DEFAULT_SERVER_URL
 
