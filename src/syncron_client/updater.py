@@ -127,20 +127,28 @@ def apply_and_restart(workdir: Path) -> None:
     script.write_text(
         "@echo off\r\n"
         "chcp 65001 >nul\r\n"
+        "set /a tries=0\r\n"
         ":wait\r\n"
-        f'tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul\r\n'
-        "if not errorlevel 1 (\r\n"
-        "  timeout /t 1 /nobreak >nul\r\n"
-        "  goto wait\r\n"
-        ")\r\n"
+        f'tasklist /FI "PID eq {pid}" /NH 2>nul | find "{pid}" >nul\r\n'
+        "if errorlevel 1 goto copy\r\n"
+        "set /a tries+=1\r\n"
+        "if %tries% GEQ 60 goto copy\r\n"
+        "ping -n 2 127.0.0.1 >nul\r\n"
+        "goto wait\r\n"
+        ":copy\r\n"
         f'robocopy "{source}" "{target}" /E /R:10 /W:1 >nul\r\n'
         f'start "" "{target / EXE_NAME}"\r\n'
         f'rd /s /q "{workdir}"\r\n'
         '(goto) 2>nul & del "%~f0"\r\n',
         encoding="utf-8",
     )
+    # CREATE_NO_WINDOW seul : avec DETACHED_PROCESS, Windows ignore CREATE_NO_WINDOW
+    # et chaque commande du .bat (tasklist, find...) ouvre sa propre fenetre de terminal.
     subprocess.Popen(
         ["cmd", "/c", str(script)],
-        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+        creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
         close_fds=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
