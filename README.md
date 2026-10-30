@@ -1,4 +1,4 @@
-# Syncron 4.3
+# Syncron 4.4
 
 Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargeable** (Windows, Linux, macOS) réservé aux membres du pays, connecté à une **API hébergée**. La connexion se fait avec **Discord** (limitée au serveur Discord du pays), et une **administration découpée par système** permet à l'équipe de tout tenir à jour.
 
@@ -6,9 +6,10 @@ Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargea
 |---|---|---|
 | **Messagerie** | tous | annonces de l'équipe et nouvelles du pays, avec notifications |
 | **Craft** | tous | ressources, étapes, ateliers, prérequis et temps de fabrication (calcul local, hors ligne possible) |
-| **R&D** | tous | les cinq domaines (global, militaire, ressources, industrie, technologie), leurs paliers, conditions, récompenses et l'avancement du pays (380 / 1 000…) |
+| **R&D** | tous | les cinq domaines (global, militaire, ressources, industrie, technologie), leurs paliers, conditions, récompenses et l'avancement du pays (380 / 1 000…), paliers validés dans l'ordre |
 | **Calendrier** | tous | réunions, guerres, événements, économie ; vue du mois ou liste ; événements récurrents |
 | **Convertisseur** | tous | stacks (64), lignes (576), coffres (1 728), doubles coffres (3 456) : division euclidienne ou unité unique |
+| **Alertes** | tous | page en travaux : arrivera avec l'intégration de l'API NationsGlory |
 | **Administration** | éditeurs, admins | une section par système, plus les comptes et le journal |
 
 ```
@@ -27,7 +28,7 @@ Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargea
 | `src/syncron_server/` | API : FastAPI, SQLAlchemy 2 async, Alembic, Discord OAuth2, JWT, un routeur par système |
 | `src/syncron_client/` | Client de bureau : connexion, session, notifications, plateforme d'outils, un paquet par outil |
 | `deploy/` | Dockerfile, docker-compose (PostgreSQL + API + Caddy), `.env.example`, sauvegardes, catalogue d'exemple |
-| `tests/` | 175 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
+| `tests/` | 176 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
 | `docs/` | `DEPLOIEMENT.md` (mise en ligne, mises à jour), `ARCHITECTURE.md` (systèmes, ajouter un outil), `SECURITE.md` (audit) |
 
 ## Démarrage rapide (développement)
@@ -51,6 +52,16 @@ ruff check . && ruff format --check .
 ## Production
 
 Voir [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) : application Discord, `docker compose up -d --build`, build du client avec `python build_client.py --server-url https://…`, rôles et systèmes confiés, mises à jour, sauvegardes.
+
+## Nouveautés de la 4.4
+
+- **R&D** :
+  - une condition chiffrée ne se coche qu'une fois sa quantité atteinte (1 000 / 1 000), et se décoche si le compteur redescend ;
+  - plus de « recherche en cours » ni de messages R&D : un seul bouton, « Valider le palier », quand il a été fait en jeu ;
+  - récompenses en texte seul (les anciennes récompenses liées à un objet sont converties en texte) ;
+  - les conditions se remplissent sur tous les paliers à la fois, mais les paliers se valident dans l'ordre : les récompenses du palier 2 ne s'obtiennent qu'après la validation du palier 1 ;
+  - l'équipe voit dans la barre latérale les paliers prêts à valider.
+- **Alertes** : nouvel outil, page en travaux en attendant l'intégration de l'API NationsGlory.
 
 ## Nouveautés de la 4.3
 

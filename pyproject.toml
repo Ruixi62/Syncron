@@ -1,6 +1,6 @@
 [project]
 name = "syncron"
-version = "4.3.4"
+version = "4.4.0"
 description = "Syncron — boîte à outils connectée des joueurs NationsGlory (client PySide6 + API FastAPI)"
 requires-python = ">=3.12"
 dependencies = []

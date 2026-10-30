@@ -1,7 +1,11 @@
 """R&D : domaines de recherche, paliers, conditions et récompenses, progression du pays.
 
 Lecture : tout compte connecté. Gestion : administrateurs et éditeurs à qui la R&D est confiée.
-Une seule recherche est en cours à la fois (index unique partiel sur `active`).
+
+Les conditions de tous les paliers peuvent être suivies à tout moment (cochées, quantités
+réunies). Une condition chiffrée ne se coche qu'une fois sa quantité atteinte. Les paliers,
+eux, se valident dans l'ordre : le palier N ne peut l'être (et donner ses récompenses)
+qu'après le palier N-1, et seulement si toutes ses conditions sont remplies.
 """
 
 from __future__ import annotations
@@ -9,15 +13,14 @@ from __future__ import annotations
 import re
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from syncron_core.text import format_quantity
 from syncron_server import audit
 from syncron_server.deps import ResearchManager, SessionDep, UserDep
-from syncron_server.messaging import post_message
-from syncron_server.models import Item, ResearchCategory, ResearchLine, ResearchTier, utcnow
+from syncron_server.models import ResearchCategory, ResearchLine, ResearchTier, utcnow
 from syncron_server.schemas import (
     OverviewStat,
     OverviewTodo,
@@ -27,6 +30,8 @@ from syncron_server.schemas import (
     ResearchLineOut,
     ResearchLinePatch,
     ResearchOut,
+    ResearchRewardIn,
+    ResearchRewardOut,
     ResearchTierIn,
     ResearchTierOut,
     SystemOverviewOut,
@@ -54,11 +59,14 @@ def _line_out(line: ResearchLine) -> ResearchLineOut:
     )
 
 
-def _is_done(kind: str, quantity: int | None, progress: int | None, done: bool) -> bool:
-    """Une récompense n'est jamais « faite » ; une condition chiffrée l'est dès que le compte est atteint."""
-    if kind != "condition":
-        return False
-    return done or (quantity is not None and progress is not None and progress >= quantity)
+def _reached(quantity: int | None, progress: int | None) -> bool:
+    """Une condition sans quantité peut toujours être cochée ; une condition chiffrée, une fois le compte atteint."""
+    return quantity is None or (progress or 0) >= quantity
+
+
+def _conditions(category: ResearchCategory, level: int) -> list[ResearchLine]:
+    tier = next((t for t in category.tiers if t.level == level), None)
+    return [line for line in tier.lines if line.kind == "condition"] if tier else []
 
 
 def _tier_out(level: int, tier: ResearchTier | None) -> ResearchTierOut:
@@ -68,7 +76,7 @@ def _tier_out(level: int, tier: ResearchTier | None) -> ResearchTierOut:
         name=tier.name if tier else "",
         description=tier.description if tier else "",
         conditions=[_line_out(line) for line in lines if line.kind == "condition"],
-        rewards=[_line_out(line) for line in lines if line.kind == "reward"],
+        rewards=[ResearchRewardOut(id=line.id, text=line.text) for line in lines if line.kind == "reward"],
     )
 
 
@@ -82,7 +90,6 @@ def category_out(category: ResearchCategory) -> ResearchCategoryOut:
         position=category.position,
         tier_count=category.tier_count,
         completed=category.completed,
-        active=category.active,
         skill_id=category.skill_id,
         updated_at=category.updated_at,
         tiers=[_tier_out(level, tiers.get(level)) for level in range(1, category.tier_count + 1)],
@@ -100,27 +107,35 @@ async def research(session: SessionDep, _user: UserDep) -> ResearchOut:
 async def overview(session: AsyncSession) -> SystemOverviewOut:
     categories = await _categories(session)
     total = sum(c.tier_count for c in categories)
-    done = sum(c.completed for c in categories)
-    active = next((c for c in categories if c.active), None)
+    validated = sum(c.completed for c in categories)
     filled = {(t.category_id, t.level): t for c in categories for t in c.tiers}
-    missing_conditions = missing_rewards = 0
+    missing_conditions = missing_rewards = ready = conditions_done = conditions_total = 0
     for category in categories:
         for level in range(1, category.tier_count + 1):
             lines = filled[(category.id, level)].lines if (category.id, level) in filled else []
-            missing_conditions += not any(line.kind == "condition" for line in lines)
+            conditions = [line for line in lines if line.kind == "condition"]
+            missing_conditions += not conditions
             missing_rewards += not any(line.kind == "reward" for line in lines)
+            if level > category.completed:
+                conditions_total += len(conditions)
+                conditions_done += sum(line.done for line in conditions)
+            if level == category.completed + 1 and conditions and all(line.done for line in conditions):
+                ready += 1
     return SystemOverviewOut(
         id=RESEARCH,
         name=SYSTEMS[RESEARCH],
         stats=[
-            OverviewStat(label="Paliers terminés", value=f"{done} / {total}", detail=f"{len(categories)} domaine(s)"),
             OverviewStat(
-                label="Recherche en cours",
-                value=active.name if active else "Aucune",
-                detail=f"palier {active.completed + 1} / {active.tier_count}" if active else "",
+                label="Paliers validés", value=f"{validated} / {total}", detail=f"{len(categories)} domaine(s)"
+            ),
+            OverviewStat(
+                label="Conditions remplies",
+                value=f"{conditions_done} / {conditions_total}",
+                detail="sur les paliers pas encore validés",
             ),
         ],
         todo=[
+            OverviewTodo(label="Paliers prêts à valider", count=ready),
             OverviewTodo(label="Paliers sans conditions", count=missing_conditions),
             OverviewTodo(label="Paliers sans récompenses", count=missing_rewards),
         ],
@@ -136,33 +151,30 @@ async def _locked(session: AsyncSession, category_id: str) -> ResearchCategory |
     return (await session.execute(query)).scalar_one_or_none()
 
 
-async def _describe(session: AsyncSession, lines: list[ResearchLine]) -> str:
-    """Liste à puces : « 2 000 × Lingot de fer », « Avoir 10 membres »…"""
-    ids = {line.item_id for line in lines if line.item_id}
-    names = dict((await session.execute(select(Item.id, Item.name).where(Item.id.in_(ids)))).all()) if ids else {}
-    bullets = []
-    for line in lines:
-        text = line.text or names.get(line.item_id, line.item_id or "")
-        if line.text and line.item_id:
-            text = f"{names.get(line.item_id, line.item_id)} — {line.text}"
-        bullets.append(f"• {format_quantity(line.quantity)} × {text}" if line.quantity else f"• {text}")
-    return "\n".join(bullets)
+async def _existing(session: AsyncSession, category_id: str) -> ResearchCategory:
+    category = await _locked(session, category_id)
+    if category is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Domaine « {category_id} » introuvable.")
+    return category
+
+
+async def _reloaded(session: AsyncSession, category_id: str) -> ResearchCategory:
+    query = select(ResearchCategory).where(ResearchCategory.id == category_id).execution_options(populate_existing=True)
+    return (await session.execute(query)).scalar_one()
 
 
 @admin_router.put("/categories/{category_id}", response_model=ResearchCategoryOut)
 async def put_category(
     category_id: str, payload: ResearchCategoryIn, session: SessionDep, user: ResearchManager
 ) -> ResearchCategoryOut:
+    """Fiche du domaine. `completed` permet de corriger l'avancement (reprise d'un pays déjà avancé en jeu)."""
     if not CATEGORY_ID.match(category_id):
         raise HTTPException(422, "Identifiant invalide (minuscules, chiffres, _ et -, 32 caractères au plus).")
     if payload.completed > payload.tier_count:
-        raise HTTPException(422, "Le nombre de paliers terminés dépasse le nombre de paliers.")
-    if payload.active and payload.completed >= payload.tier_count:
-        raise HTTPException(422, "Tous les paliers sont terminés : rien à rechercher dans ce domaine.")
+        raise HTTPException(422, "Le nombre de paliers validés dépasse le nombre de paliers.")
     category = await _locked(session, category_id)
     created = category is None
     before_completed = 0 if created else category.completed
-    was_active = False if created else category.active
     if created:
         category = ResearchCategory(id=category_id, updated_at=utcnow())
         session.add(category)
@@ -176,20 +188,12 @@ async def put_category(
             )
         for tier in [t for t in category.tiers if t.level > payload.tier_count]:
             category.tiers.remove(tier)
-    if payload.active and not was_active:
-        await session.execute(
-            update(ResearchCategory)
-            .where(ResearchCategory.active, ResearchCategory.id != category_id)
-            .values(active=False, updated_at=utcnow())
-        )
-        await session.flush()
     category.name = payload.name
     category.description = payload.description
     category.icon = payload.icon or "flask"
     category.position = payload.position
     category.tier_count = payload.tier_count
     category.completed = payload.completed
-    category.active = payload.active
     category.skill_id = payload.skill_id or None
     category.updated_at = utcnow()
 
@@ -197,9 +201,7 @@ async def put_category(
     if created:
         changes.append("créé")
     if payload.completed != before_completed:
-        changes.append(f"paliers terminés {before_completed} → {payload.completed}")
-    if payload.active != was_active:
-        changes.append("recherche lancée" if payload.active else "recherche arrêtée")
+        changes.append(f"paliers validés {before_completed} → {payload.completed}")
     audit.record(
         session,
         user.id,
@@ -209,58 +211,15 @@ async def put_category(
         category_id,
         f"R&D {payload.name} : " + (", ".join(changes) or "modifié"),
     )
-    if payload.notify:
-        await _announce(session, category, before_completed, was_active, user.id)
     await session.commit()
     return category_out(await _reloaded(session, category_id))
-
-
-async def _announce(
-    session: AsyncSession, category: ResearchCategory, before_completed: int, was_active: bool, author_id
-) -> None:
-    tiers = {tier.level: tier for tier in category.tiers}
-    if category.completed > before_completed:
-        rewards = [
-            line
-            for level in range(before_completed + 1, category.completed + 1)
-            for line in (tiers[level].lines if level in tiers else [])
-            if line.kind == "reward"
-        ]
-        if category.completed - before_completed == 1:
-            title = f"R&D {category.name} : palier {category.completed} terminé"
-        else:
-            title = f"R&D {category.name} : paliers {before_completed + 1} à {category.completed} terminés"
-        body = "Récompenses :\n" + await _describe(session, rewards) if rewards else ""
-        await post_message(
-            session,
-            system=RESEARCH,
-            title=title,
-            body=body,
-            link_tool=RESEARCH,
-            link_key=category.id,
-            author_id=author_id,
-        )
-    if category.active and not was_active:
-        level = category.completed + 1
-        conditions = [line for line in (tiers[level].lines if level in tiers else []) if line.kind == "condition"]
-        await post_message(
-            session,
-            system=RESEARCH,
-            title=f"Recherche lancée : {category.name}, palier {level}",
-            body="Conditions :\n" + await _describe(session, conditions) if conditions else "",
-            link_tool=RESEARCH,
-            link_key=f"{category.id}:{level}",
-            author_id=author_id,
-        )
 
 
 @admin_router.put("/categories/{category_id}/tiers/{level}", response_model=ResearchCategoryOut)
 async def put_tier(
     category_id: str, level: int, payload: ResearchTierIn, session: SessionDep, user: ResearchManager
 ) -> ResearchCategoryOut:
-    category = await _locked(session, category_id)
-    if category is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Domaine « {category_id} » introuvable.")
+    category = await _existing(session, category_id)
     if not 1 <= level <= category.tier_count:
         raise HTTPException(422, f"Palier hors limites : {category.name} a {category.tier_count} palier(s).")
     values = {"name": payload.name, "description": payload.description, "updated_at": utcnow()}
@@ -285,7 +244,10 @@ async def put_tier(
                 session.add(line)
             else:
                 kept.add(line.id)
-            _fill(line, kind, position, data)
+            if kind == "condition":
+                _fill_condition(line, position, data)
+            else:
+                _fill_reward(line, position, data)
     removed = [line_id for line_id in existing if line_id not in kept]
     if removed:
         await session.execute(delete(ResearchLine).where(ResearchLine.id.in_(removed)))
@@ -304,54 +266,55 @@ async def put_tier(
     return category_out(await _reloaded(session, category_id))
 
 
-async def _reloaded(session: AsyncSession, category_id: str) -> ResearchCategory:
-    query = select(ResearchCategory).where(ResearchCategory.id == category_id).execution_options(populate_existing=True)
-    return (await session.execute(query)).scalar_one()
-
-
-def _fill(line: ResearchLine, kind: str, position: int, data: ResearchLineIn) -> None:
-    line.kind = kind
+def _fill_condition(line: ResearchLine, position: int, data: ResearchLineIn) -> None:
+    line.kind = "condition"
     line.position = position
     line.text = data.text
     line.quantity = data.quantity
     line.item_id = data.item_id
-    line.progress = data.progress if kind == "condition" else None
-    line.done = _is_done(kind, data.quantity, line.progress, data.done)
+    line.progress = data.progress
+    line.done = data.done and _reached(data.quantity, data.progress)
+
+
+def _fill_reward(line: ResearchLine, position: int, data: ResearchRewardIn) -> None:
+    line.kind = "reward"
+    line.position = position
+    line.text = data.text
+    line.quantity = None
+    line.item_id = None
+    line.progress = None
+    line.done = False
 
 
 @admin_router.patch("/lines/{line_id}", response_model=ResearchCategoryOut)
 async def patch_line(
     line_id: int, payload: ResearchLinePatch, session: SessionDep, user: ResearchManager
 ) -> ResearchCategoryOut:
-    """Coche une condition ou met à jour son compteur (380 / 1 000) sans rouvrir tout le palier."""
+    """Met à jour le compteur d'une condition (380 / 1 000) ou la coche, sans rouvrir tout le palier.
+
+    Une condition chiffrée ne peut pas être cochée tant que sa quantité n'est pas atteinte ;
+    si son compteur redescend sous la quantité, elle est décochée.
+    """
     line = await session.get(ResearchLine, line_id, with_for_update=True)
     if line is None or line.kind != "condition":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Condition introuvable.")
-    category = await _locked(session, line.category_id)
-    tier_lines = (
-        await session.execute(
-            select(ResearchLine).where(
-                ResearchLine.category_id == line.category_id,
-                ResearchLine.level == line.level,
-                ResearchLine.kind == "condition",
-            )
-        )
-    ).scalars()
-    conditions = list(tier_lines)
-    was_complete = all(c.done for c in conditions)
+    category = await _existing(session, line.category_id)
     if payload.progress is not None:
         if line.quantity is None:
             raise HTTPException(422, "Cette condition n'a pas de quantité à suivre.")
         line.progress = payload.progress
-        line.done = _is_done("condition", line.quantity, line.progress, payload.done or False)
-    if payload.done is not None and payload.progress is None:
-        line.done = payload.done
+    done = line.done if payload.done is None else payload.done
+    if done and not _reached(line.quantity, line.progress):
+        if payload.done:
+            missing = format_quantity(line.quantity - (line.progress or 0))
+            raise HTTPException(422, f"Quantité pas encore atteinte : il en manque {missing}.")
+        done = False
+    line.done = done
     category.updated_at = utcnow()
     label = line.text or line.item_id or "condition"
-    if line.quantity is not None and line.progress is not None:
-        state = f"{line.progress} / {line.quantity}"
-    else:
-        state = "remplie" if line.done else "à faire"
+    state = "remplie" if line.done else "à faire"
+    if line.quantity is not None:
+        state = f"{line.progress or 0} / {line.quantity}, {state}"
     audit.record(
         session,
         user.id,
@@ -361,26 +324,75 @@ async def patch_line(
         f"{line.category_id}:{line.level}",
         f"R&D {category.name}, palier {line.level} : {label} — {state}",
     )
-    if conditions and not was_complete and all(c.done for c in conditions):
-        await post_message(
-            session,
-            system=RESEARCH,
-            title=f"R&D {category.name}, palier {line.level} : toutes les conditions sont remplies",
-            body="Le palier peut être validé en jeu, puis marqué comme terminé dans Syncron.",
-            audience="staff",
-            link_tool=RESEARCH,
-            link_key=f"{line.category_id}:{line.level}",
-            author_id=user.id,
-        )
     await session.commit()
     return category_out(await _reloaded(session, line.category_id))
 
 
+@admin_router.post("/categories/{category_id}/tiers/{level}/validate", response_model=ResearchCategoryOut)
+async def validate_tier(
+    category_id: str, level: int, session: SessionDep, user: ResearchManager
+) -> ResearchCategoryOut:
+    """Le palier a été fait en jeu : il est validé, ses récompenses sont acquises."""
+    category = await _existing(session, category_id)
+    if not 1 <= level <= category.tier_count:
+        raise HTTPException(422, f"Palier hors limites : {category.name} a {category.tier_count} palier(s).")
+    if level <= category.completed:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Le palier {level} est déjà validé.")
+    if level > category.completed + 1:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Valide d'abord le palier {category.completed + 1}.")
+    conditions = _conditions(category, level)
+    remaining = sum(not line.done for line in conditions)
+    if remaining:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Conditions pas toutes remplies : {len(conditions) - remaining} / {len(conditions)}.",
+        )
+    category.completed = level
+    category.updated_at = utcnow()
+    audit.record(
+        session,
+        user.id,
+        RESEARCH,
+        "research.validate",
+        "research",
+        f"{category_id}:{level}",
+        f"R&D {category.name} : palier {level} validé",
+    )
+    await session.commit()
+    return category_out(await _reloaded(session, category_id))
+
+
+@admin_router.delete("/categories/{category_id}/tiers/{level}/validate", response_model=ResearchCategoryOut)
+async def unvalidate_tier(
+    category_id: str, level: int, session: SessionDep, user: ResearchManager
+) -> ResearchCategoryOut:
+    """Annule la validation du dernier palier validé (erreur de clic)."""
+    category = await _existing(session, category_id)
+    if level != category.completed or level < 1:
+        detail = (
+            f"Seul le dernier palier validé ({category.completed}) peut être annulé."
+            if category.completed
+            else "Aucun palier n'est validé."
+        )
+        raise HTTPException(status.HTTP_409_CONFLICT, detail)
+    category.completed = level - 1
+    category.updated_at = utcnow()
+    audit.record(
+        session,
+        user.id,
+        RESEARCH,
+        "research.validate",
+        "research",
+        f"{category_id}:{level}",
+        f"R&D {category.name} : validation du palier {level} annulée",
+    )
+    await session.commit()
+    return category_out(await _reloaded(session, category_id))
+
+
 @admin_router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(category_id: str, session: SessionDep, user: ResearchManager) -> None:
-    category = await _locked(session, category_id)
-    if category is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Domaine « {category_id} » introuvable.")
+    category = await _existing(session, category_id)
     name = category.name
     await session.delete(category)
     audit.record(session, user.id, RESEARCH, "research.delete", "research", category_id, f"R&D supprimé : {name}")

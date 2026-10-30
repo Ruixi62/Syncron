@@ -21,7 +21,7 @@ def test_home_lists_country_tools_without_admin_and_hides_search(make_launcher, 
     shell = sign_in(make_launcher())
     window = shell.window
     window.show_page("home")
-    assert window._home.card_ids == ["craft", "research", "calendar", "converter"]
+    assert window._home.card_ids == ["craft", "research", "calendar", "converter", "alerts"]
     assert window._home._title.text() == "Empire du Levant"
     assert "outils internes de Empire du Levant" in window._home._intro.text()
     assert not window.top_bar.search_visible()
@@ -103,11 +103,14 @@ def test_research_tiers_edited_in_admin_show_progress(make_launcher, tmp_path):
     research.tier_name_field.setText("Fondations")
     research.conditions.add_line(Line("", 2000, "quartz"))
     research.conditions.add_line(Line("Avoir 10 membres", done=True))
-    research.rewards.add_line(Line("+5 % de vitesse de craft"))
+    reward = research.rewards.add_line(Line("+5 % de vitesse de craft"))
+    assert reward.item_field.isHidden() and reward.quantity_field.isHidden()
     research.save_tier()
     assert research.tier_banner.isHidden(), research.tier_banner.text()
+    research.select_tier(2)
+    research.rewards.add_line(Line("Tourelles"))
+    research.save_tier()
     research.completed_field.setValue(1)
-    research.active_field.setChecked(True)
     research.save_domain()
     assert research.domain_banner.isHidden(), research.domain_banner.text()
 
@@ -120,16 +123,18 @@ def test_research_tiers_edited_in_admin_show_progress(make_launcher, tmp_path):
         ("industrie", 12),
         ("technologie", 7),
     ]
-    assert page.selected.id == "militaire" and not page.manage_button.isVisible()
-    first, second = page.tier_cards[1], page.tier_cards[2]
-    assert first.status is TierStatus.DONE and second.status is TierStatus.ACTIVE
-    assert first.tier.conditions[0].describe(reader.registry.get("research")._catalog) == "2 000 × Quartz"
-    assert reader.registry.get("research").status().message == "Militaire : palier 2 en cours"
+    page.select("militaire")
+    assert not page.manage_button.isVisible()
+    first, second, third = page.tier_cards[1], page.tier_cards[2], page.tier_cards[3]
+    assert (first.status, second.status, third.status) == (TierStatus.DONE, TierStatus.NEXT, TierStatus.LOCKED)
+    assert first.tier.conditions[0].describe(reader.registry.get("research")._catalog) == "2\u202f000 × Quartz"
+    assert first.validate_button is None and second.validate_button is None
+    assert second.rewards_note is None
 
     reader.host.notifications.poll()
     reader.window.show_page("mailbox")
     titles = [m["title"] for m in reader.registry.get("mailbox").page.messages]
-    assert titles[:2] == ["Recherche lancée : Militaire, palier 2", "R&D Militaire : palier 1 terminé"]
+    assert not any("R&D" in title or "Recherche" in title for title in titles)
 
 
 def test_converter_modes(make_launcher, tmp_path):
@@ -212,6 +217,7 @@ def test_research_progress_is_tracked_from_the_research_page(make_launcher, tmp_
     admin = admin_section(chef, "research.domains", "militaire:1")
     first = admin.conditions.add_line(Line("Déposer des circuits élites"))
     first.quantity_field.setValue(1000)
+    assert not first.done_field.isEnabled()
     admin.conditions.add_line(Line("Casser des minerais obscurs", 180))
     admin.conditions.add_line(Line("Avoir 10 membres"))
     admin.rewards.add_line(Line("Tourelles"))
@@ -219,39 +225,74 @@ def test_research_progress_is_tracked_from_the_research_page(make_launcher, tmp_
     assert admin.tier_banner.isHidden(), admin.tier_banner.text()
     ids = [row.line_id for row in admin.conditions.rows]
     assert all(ids)
+    admin.select_tier(2)
+    admin.conditions.add_line(Line("Avoir 20 membres"))
+    admin.rewards.add_line(Line("Missiles"))
+    admin.save_tier()
 
     chef.window.show_page("research")
     tool = chef.registry.get("research")
     tool.page.select("militaire")
+    second = tool.page.tier_cards[2]
+    assert second.status is TierStatus.LOCKED and second.rewards_note is not None
+    second.rows[0].done_box.setChecked(True)
+    assert tool.page.tier_cards[2].rows[0].line.done
+
     card = tool.page.tier_cards[1]
+    assert not card.validate_button.isEnabled()
     card.rows[0].set_progress(380)
     card = tool.page.tier_cards[1]
     assert card.rows[0].line.progress == 380 and not card.rows[0].line.done
+    assert not card.rows[0].done_box.isEnabled()
     card.rows[2].done_box.setChecked(True)
     card = tool.page.tier_cards[1]
     assert card.rows[2].line.done and card.rows[2].done_box.isChecked()
     card.rows[1].set_progress(180)
-    assert tool.page.tier_cards[1].rows[1].line.done
+    card = tool.page.tier_cards[1]
+    assert not card.rows[1].line.done and card.rows[1].done_box.isEnabled()
+    card.rows[1].done_box.setChecked(True)
+    card.rows[0].set_progress(1000)
+    tool.page.tier_cards[1].rows[0].done_box.setChecked(True)
+    card = tool.page.tier_cards[1]
+    assert card.tier.complete and card.validate_button.isEnabled()
+    assert tool.status().badge == "1"
 
-    tool.run_action("militaire", "start", 1)
-    assert tool.page.tier_cards[1].status is TierStatus.ACTIVE
-    tool.run_action("militaire", "complete", 1)
+    tool.run_action("militaire", "validate", 1)
     assert tool.page.tier_cards[1].status is TierStatus.DONE and tool.page.selected.completed == 1
+    assert tool.page.tier_cards[1].unvalidate_button is not None
+    assert tool.page.tier_cards[2].status is TierStatus.NEXT and tool.page.tier_cards[2].validate_button.isEnabled()
+    tool.run_action("militaire", "unvalidate", 1)
+    assert tool.page.selected.completed == 0
 
-    admin = admin_section(chef, "research.domains", "militaire:1")
-    assert [row.line_id for row in admin.conditions.rows] == ids
-    assert admin.conditions.rows[0].progress_field.value() == 380
-    admin.select_tier(2)
+    admin = admin_section(chef, "research.domains", "militaire:2")
     admin.copy_previous()
-    copied = admin.conditions.lines()[0]
+    copied = admin.conditions.lines()[1]
     assert copied.text == "Déposer des circuits élites" and copied.id is None and not copied.progress
+    assert [line.text for line in admin.rewards.lines()] == ["Missiles", "Tourelles"]
+    admin.save_tier()
+    admin.select_tier(1)
+    assert [row.line_id for row in admin.conditions.rows] == ids
+    row = admin.conditions.rows[0]
+    assert row.progress_field.value() == 1000 and row.done_field.isChecked()
+    row.progress_field.setValue(10)
+    assert not row.done_field.isChecked() and not row.done_field.isEnabled() and not row.line().done
 
     reader.window.show_page("research")
     page = reader.registry.get("research").page
     page.select("militaire")
     rows = page.tier_cards[1].rows
     assert rows[0].progress_spin is None and rows[0].done_box is None
-    assert rows[0].line.progress_text() == "380 / 1 000"
+    assert rows[0].line.progress_text() == "1\u202f000 / 1\u202f000"
+    assert page.tier_cards[1].validate_button is None
+    assert reader.registry.get("research").status().badge == ""
+
+
+def test_alerts_tool_is_a_work_in_progress_page(make_launcher, tmp_path):
+    shell = member(make_launcher, tmp_path)
+    shell.window.show_page("alerts")
+    alerts = shell.registry.get("alerts")
+    assert alerts.info.stage.value == "planned"
+    assert "API NationsGlory" in alerts.info.description
 
 
 def test_recurring_and_single_day_events(make_launcher, tmp_path):

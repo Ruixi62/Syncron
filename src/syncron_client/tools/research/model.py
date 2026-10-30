@@ -1,4 +1,8 @@
-"""R&D côté client : domaines, paliers, conditions et récompenses, état d'avancement."""
+"""R&D côté client : domaines, paliers, conditions et récompenses, état d'avancement.
+
+Les conditions se suivent sur tous les paliers à la fois ; les paliers se valident dans
+l'ordre (le palier N après le N-1), une fois faits en jeu.
+"""
 
 from __future__ import annotations
 
@@ -12,26 +16,25 @@ from syncron_core.text import format_quantity
 
 class TierStatus(StrEnum):
     DONE = "done"
-    ACTIVE = "active"
     NEXT = "next"
     LOCKED = "locked"
 
     @property
     def label(self) -> str:
-        return {"done": "Terminé", "active": "En cours", "next": "Prochain", "locked": "À venir"}[self.value]
+        return {"done": "Validé", "next": "Prochain", "locked": "À venir"}[self.value]
 
     @property
     def tone(self) -> str:
-        return {"done": "success", "active": "accent", "next": "info", "locked": "neutral"}[self.value]
+        return {"done": "success", "next": "info", "locked": "neutral"}[self.value]
 
     @property
     def icon(self) -> str:
-        return {"done": "check-circle", "active": "play", "next": "flag", "locked": "lock"}[self.value]
+        return {"done": "check-circle", "next": "flag", "locked": "lock"}[self.value]
 
 
 @dataclass(frozen=True, slots=True)
 class Line:
-    """Condition ou récompense. `progress` : quantité déjà réunie (380 sur 1 000)."""
+    """Condition ou récompense (texte seul). `progress` : quantité déjà réunie (380 sur 1 000)."""
 
     text: str
     quantity: int | None = None
@@ -52,19 +55,32 @@ class Line:
         )
 
     def to_api(self) -> dict[str, Any]:
+        """Condition."""
         return {
             "id": self.id,
             "text": self.text,
             "quantity": self.quantity,
             "progress": self.progress if self.quantity else None,
             "item_id": self.item_id,
-            "done": self.done,
+            "done": self.done and self.reached,
         }
+
+    def reward_to_api(self) -> dict[str, Any]:
+        return {"id": self.id, "text": self.text}
 
     @property
     def tracked(self) -> bool:
         """Condition chiffrée : on suit combien on en a réuni."""
         return self.quantity is not None
+
+    @property
+    def reached(self) -> bool:
+        """La case peut être cochée : pas de quantité à réunir, ou quantité atteinte."""
+        return self.quantity is None or (self.progress or 0) >= self.quantity
+
+    @property
+    def missing(self) -> int:
+        return max((self.quantity or 0) - (self.progress or 0), 0)
 
     @property
     def fraction(self) -> float:
@@ -102,7 +118,7 @@ class Tier:
             name=raw.get("name") or "",
             description=raw.get("description") or "",
             conditions=tuple(Line.from_api(line) for line in raw.get("conditions", [])),
-            rewards=tuple(Line.from_api(line) for line in raw.get("rewards", [])),
+            rewards=tuple(Line(line.get("text") or "", id=line.get("id")) for line in raw.get("rewards", [])),
         )
 
     @property
@@ -112,6 +128,11 @@ class Tier:
     @property
     def done_count(self) -> int:
         return sum(1 for line in self.conditions if line.done)
+
+    @property
+    def complete(self) -> bool:
+        """Toutes les conditions sont remplies (vrai aussi pour un palier sans condition)."""
+        return all(line.done for line in self.conditions)
 
     @property
     def is_empty(self) -> bool:
@@ -127,7 +148,6 @@ class Domain:
     position: int
     tier_count: int
     completed: int
-    active: bool
     skill_id: str | None
     tiers: tuple[Tier, ...]
 
@@ -141,7 +161,6 @@ class Domain:
             position=int(raw.get("position", 0)),
             tier_count=int(raw["tier_count"]),
             completed=int(raw["completed"]),
-            active=bool(raw["active"]),
             skill_id=raw.get("skill_id"),
             tiers=tuple(Tier.from_api(tier) for tier in raw.get("tiers", [])),
         )
@@ -154,7 +173,6 @@ class Domain:
             "position": self.position,
             "tier_count": self.tier_count,
             "completed": self.completed,
-            "active": self.active,
             "skill_id": self.skill_id,
         }
 
@@ -166,6 +184,10 @@ class Domain:
     def progress_text(self) -> str:
         return f"{self.completed} / {self.tier_count} paliers"
 
+    @property
+    def next_level(self) -> int | None:
+        return None if self.finished or not self.tier_count else self.completed + 1
+
     def tier(self, level: int) -> Tier | None:
         return next((tier for tier in self.tiers if tier.level == level), None)
 
@@ -173,8 +195,20 @@ class Domain:
         if level <= self.completed:
             return TierStatus.DONE
         if level == self.completed + 1:
-            return TierStatus.ACTIVE if self.active else TierStatus.NEXT
+            return TierStatus.NEXT
         return TierStatus.LOCKED
+
+    def can_validate(self, level: int) -> bool:
+        """Le palier suit le dernier validé et toutes ses conditions sont remplies."""
+        tier = self.tier(level)
+        return level == self.next_level and tier is not None and tier.complete
+
+    def ready(self) -> bool:
+        """Le prochain palier a des conditions, toutes remplies : il n'attend plus que sa validation."""
+        if self.next_level is None:
+            return False
+        tier = self.tier(self.next_level)
+        return tier is not None and bool(tier.conditions) and tier.complete
 
 
 def parse_domains(document: dict[str, Any]) -> list[Domain]:

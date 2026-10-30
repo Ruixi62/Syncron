@@ -1,7 +1,8 @@
 """Outil R&D : domaines de recherche du pays (global, militaire, ressources, industrie, technologie).
 
 Chaque domaine a ses paliers ; chaque palier, ses conditions et ses
-récompenses. Lecture pour tous ; progression et contenu gérés dans
+récompenses. Lecture pour tous. L'équipe suit les conditions depuis la page R&D
+et valide les paliers faits en jeu, dans l'ordre ; le contenu se gère dans
 l'Administration, section « R&D ». Dernier état gardé sur le disque pour le
 hors-ligne.
 """
@@ -19,7 +20,7 @@ from syncron_client.platform.admin import AdminSection, admin_link, call_api
 from syncron_client.platform.tool import StatusLevel, Tool, ToolHost, ToolInfo, ToolStatus
 from syncron_client.tools.research.admin import ResearchAdmin
 from syncron_client.tools.research.model import Domain, parse_domains
-from syncron_client.tools.research.page import START, ResearchPage
+from syncron_client.tools.research.page import VALIDATE, ResearchPage
 from syncron_client.ui import icons
 from syncron_client.ui.item_icons import IconProvider
 from syncron_client.ui.theme import COLORS
@@ -37,7 +38,7 @@ class ResearchTool(Tool):
         name="R&D",
         description="Les cinq domaines de recherche du pays : paliers, conditions, récompenses et avancement.",
         icon="flask",
-        version="4.3.0",
+        version="4.4.0",
         system="research",
     )
 
@@ -117,42 +118,28 @@ class ResearchTool(Tool):
         )
 
     def run_action(self, domain_id: str, action: str, level: int) -> None:
-        """START : ce palier devient la recherche en cours ; COMPLETE : il est terminé. Le pays est prévenu."""
-        domain = next((d for d in self._domains if d.id == domain_id), None)
-        if domain is None:
-            return
-        payload = {**domain.to_api(), "notify": True}
-        if action == START:
-            payload["active"] = True
+        """VALIDATE : le palier a été fait en jeu ; UNVALIDATE : annule la validation du dernier palier."""
+        api = self._host.api
+        if action == VALIDATE:
+            method, success = api.validate_research_tier, f"Palier {level} validé."
         else:
-            payload.update(completed=level, active=False)
-
-        def done(raw: dict[str, Any]) -> None:
-            self._merge(raw)
-            self._host.notifications.poll()
-
-        success = f"Palier {level} lancé." if action == START else f"Palier {level} terminé."
-        call_api(self._host, lambda: self._host.api.put_research_category(domain_id, payload), done, success=success)
+            method, success = api.unvalidate_research_tier, f"Validation du palier {level} annulée."
+        call_api(self._host, lambda: method(domain_id, level), self._merge, success=success)
 
     def _confirm_action(self, domain_id: str, action: str, level: int) -> None:
         domain = next((d for d in self._domains if d.id == domain_id), None)
         name = domain.name if domain else domain_id
-        if action == START:
-            question = f"Lancer la recherche « {name} », palier {level} ? Une autre recherche en cours serait arrêtée."
+        if action == VALIDATE:
+            question = f"Le palier {level} de « {name} » a bien été fait en jeu ?"
         else:
-            question = f"Déclarer « {name} », palier {level}, terminé ? Le pays sera prévenu avec les récompenses."
+            question = f"Annuler la validation du palier {level} de « {name} » ?"
         if ask(self._page, "R&D", question):
             self.run_action(domain_id, action, level)
 
     def _merge(self, raw: dict[str, Any]) -> None:
-        """Remplace un domaine par sa version renvoyée par le serveur (les autres ne changent pas,
-        sauf une recherche en cours arrêtée ailleurs : on recharge tout dans ce cas)."""
+        """Remplace un domaine par sa version renvoyée par le serveur."""
         updated = Domain.from_api(raw)
-        domains = [updated if d.id == updated.id else d for d in self._domains]
-        if updated.active and any(d.active and d.id != updated.id for d in domains):
-            self.refresh()
-            return
-        self._apply(domains)
+        self._apply([updated if d.id == updated.id else d for d in self._domains])
 
     def open(self, key: str) -> None:
         """« militaire » ou « militaire:5 » (lien d'un message)."""
@@ -162,10 +149,14 @@ class ResearchTool(Tool):
         self._page.select(domain_id, int(level) if level.isdigit() else None)
 
     def status(self) -> ToolStatus:
-        active = next((d for d in self._domains if d.active), None)
-        if active is None:
+        """Pour l'équipe : paliers dont toutes les conditions sont remplies, à valider une fois faits en jeu."""
+        if self._host is None or not self._host.session.can_manage(self.info.system):
             return ToolStatus()
-        return ToolStatus(StatusLevel.INFO, f"{active.name} : palier {active.completed + 1} en cours")
+        ready = [d for d in self._domains if d.ready()]
+        if not ready:
+            return ToolStatus()
+        names = ", ".join(f"{d.name} {d.next_level}" for d in ready)
+        return ToolStatus(StatusLevel.INFO, f"Prêt à valider : {names}", str(len(ready)))
 
     def page_actions(self) -> Sequence[QAction]:
         return self._actions

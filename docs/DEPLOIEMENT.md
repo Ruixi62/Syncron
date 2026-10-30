@@ -2,7 +2,7 @@
 
 Syncron est le logiciel interne du pays : il est réservé à ses membres. Ce guide va d'un serveur vide jusqu'au client distribué aux membres. Compter environ 30 minutes.
 
-> **Tu passes de la 4.0 à la 4.1 ?** Lis directement la [section 8](#8-passer-de-la-40-à-la-41).
+> **Tu mets à jour un serveur existant ?** Lis directement la [section 8](#8-passer-à-la-44).
 
 ## 1. Prérequis
 
@@ -59,7 +59,7 @@ Connecte-toi avec Discord : ton compte est administrateur s'il figure dans `SYNC
 | **Général** · Comptes | rôles, systèmes confiés aux éditeurs, suspension (administrateurs) |
 | **Général** · Journal | qui a modifié quoi, filtrable par système |
 | **Craft** · Objets, Ateliers, Compétences | le catalogue ; **Import / export** pour charger `deploy/seed/catalogue-exemple.json` ou ton fichier (Analyser, puis Appliquer) |
-| **R&D** · Domaines et paliers | nombre de paliers, paliers terminés, recherche en cours ; conditions et récompenses de chaque palier |
+| **R&D** · Domaines et paliers | nombre de paliers, paliers validés (pour corriger l'avancement) ; conditions et récompenses de chaque palier. Au quotidien, l'équipe suit les conditions et valide les paliers depuis la page R&D |
 | **Calendrier** · Événements | réunions, guerres, événements, économie ; « Prévenir tout le pays » envoie un message à chacun |
 | **Messagerie** · Annonces | message à tout le pays, à l'équipe ou à des membres choisis |
 
@@ -82,12 +82,21 @@ Dans **Comptes**, passe un membre en Éditeur, puis choisis ses systèmes dans l
 - **Serveur** : `git pull && docker compose up -d --build`. Les migrations s'appliquent toutes seules.
 - **Client** : publie le nouveau build. Pour obliger les membres à mettre à jour, augmente `SYNCRON_MIN_CLIENT_VERSION` dans `.env`, puis lance `docker compose up -d`. Les anciens clients affichent alors « Mise à jour requise ».
 
-## 8. Passer à la 4.3
+## 8. Passer à la 4.4
+
+La migration `0004` retire la « recherche en cours » de la R&D, réécrit en texte les récompenses qui citaient un objet (« 64 × Lingot de fer ») et décoche les conditions chiffrées cochées avant d'avoir atteint leur quantité. Le reste est conservé.
+
+1. Sur le serveur : dans `.env`, mets `SYNCRON_MIN_CLIENT_VERSION=4.4.0`, puis `git pull && docker compose up -d --build`.
+2. Publie le client : pousse sur `main` (la version 4.4.0 est nouvelle, le workflow crée la Release `v4.4.0`). Les clients se mettent à jour tout seuls au prochain lancement.
+
+Un client 4.3 enverrait encore la « recherche en cours » et des récompenses avec objet, que l'API 4.4 ignore ou refuse : d'où la version minimale.
+
+### Passer à la 4.3
 
 La migration `0003` ajoute le suivi des conditions de R&D et la récurrence des événements ; elle conserve toutes les données.
 
 1. Sur le serveur : dans `.env`, mets `SYNCRON_MIN_CLIENT_VERSION=4.3.0`, puis `git pull && docker compose up -d --build`.
-2. Publie le client : pousse le tag `v4.3.0` ; le workflow GitHub construit `Syncron-windows.zip` et la Release. Les clients 4.2 se mettent à jour tout seuls au prochain lancement.
+2. Publie le client : le workflow GitHub construit `Syncron-windows.zip` et la Release dès qu'une nouvelle version arrive sur `main`. Les clients 4.2 se mettent à jour tout seuls au prochain lancement.
 
 Un client 4.2 resterait utilisable en lecture, mais l'écran de gestion de la R&D d'avant la 4.3 effacerait les quantités réunies en enregistrant un palier : d'où la version minimale.
 

@@ -228,7 +228,7 @@ class AuditEntry(Base):
 
 
 class ResearchCategory(Base):
-    """Domaine de recherche (global, militaire…) : nombre de paliers, progression du pays."""
+    """Domaine de recherche (global, militaire…) : nombre de paliers, paliers validés en jeu (`completed`)."""
 
     __tablename__ = "research_categories"
 
@@ -239,7 +239,6 @@ class ResearchCategory(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
     tier_count: Mapped[int] = mapped_column(Integer, default=0)
     completed: Mapped[int] = mapped_column(Integer, default=0)
-    active: Mapped[bool] = mapped_column(Boolean, default=False)
     skill_id: Mapped[str | None] = mapped_column(String(ID_LENGTH))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -250,8 +249,6 @@ class ResearchCategory(Base):
     __table_args__ = (
         CheckConstraint("tier_count between 0 and 100", name="tier_count"),
         CheckConstraint("completed between 0 and tier_count", name="completed"),
-        CheckConstraint("not active or completed < tier_count", name="active"),
-        Index("uq_research_categories_active", "active", unique=True, postgresql_where="active"),
     )
 
 
@@ -274,7 +271,11 @@ class ResearchTier(Base):
 
 
 class ResearchLine(Base):
-    """Condition ou récompense d'un palier : un texte, et éventuellement une quantité d'un objet du catalogue."""
+    """Condition ou récompense d'un palier.
+
+    Condition : un texte et/ou un objet du catalogue, une quantité à réunir et la quantité réunie ;
+    elle ne peut être cochée qu'une fois la quantité atteinte. Récompense : un texte seul.
+    """
 
     __tablename__ = "research_lines"
 
@@ -302,6 +303,10 @@ class ResearchLine(Base):
         CheckConstraint("quantity is null or quantity >= 1", name="quantity"),
         CheckConstraint("progress is null or progress >= 0", name="progress"),
         CheckConstraint("text <> '' or item_id is not null", name="content"),
+        CheckConstraint(
+            "kind = 'condition' or (item_id is null and quantity is null and progress is null)", name="reward_text"
+        ),
+        CheckConstraint("not done or quantity is null or coalesce(progress, 0) >= quantity", name="done_reached"),
     )
 
 

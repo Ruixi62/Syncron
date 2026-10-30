@@ -1,4 +1,4 @@
-# Syncron 4.3 — Architecture
+# Syncron 4.4 — Architecture
 
 Syncron est le logiciel interne d'un pays de NationsGlory : un client de bureau réservé aux membres, connecté à une API hébergée.
 
@@ -25,7 +25,7 @@ Tout est découpé en **systèmes**. Chacun a ses tables, ses routes de lecture,
 | `research` | `/api/v1/research` | `/api/v1/admin/research/…` | R&D |
 | `calendar` | `/api/v1/calendar/events` | `/api/v1/admin/calendar/…` | Calendrier |
 | `messages` | `/api/v1/inbox` | `/api/v1/admin/messages` | Messagerie |
-| — | — | — | Convertisseur (local) |
+| — | — | — | Convertisseur (local), Alertes (en travaux) |
 
 Un éditeur gère les systèmes listés dans `users.permissions` ; un administrateur les gère tous, plus les comptes (`accounts` dans le journal).
 
@@ -62,17 +62,16 @@ erDiagram
     research_categories {
         string id PK
         int tier_count
-        int completed "paliers terminés"
-        bool active "unique : une recherche à la fois"
+        int completed "paliers validés en jeu"
         string skill_id "compétence Craft liée"
     }
     research_lines {
         bigint progress "quantité réunie (380 / 1 000)"
         string kind "condition | reward"
-        string text
+        string text "seul champ d'une récompense"
         bigint quantity
-        string item_id "objet du catalogue"
-        bool done
+        string item_id "objet du catalogue (conditions)"
+        bool done "seulement si progress ≥ quantity"
     }
     calendar_events {
         uuid id PK
@@ -95,9 +94,9 @@ erDiagram
 ```
 
 - Le catalogue Craft est **normalisé** et protégé par des clés étrangères et des contraintes `CHECK`. `catalog_state.revision` sert d'**ETag** au client et de **verrou** d'écriture. Un temps de fabrication absent vaut « instantané ».
-- R&D : `completed ≤ tier_count`, et un index unique partiel sur `active` garantit **une seule recherche en cours** pour le pays.
+- R&D : `completed ≤ tier_count`. Les paliers se **valident dans l'ordre** (`POST …/tiers/{n}/validate` exige le palier n-1 validé et toutes les conditions du palier n remplies) ; seul le dernier palier validé peut être annulé. Les conditions, elles, se suivent sur tous les paliers à la fois.
 - Calendrier : une série est **une seule ligne** ; `/calendar/events` la déroule en occurrences (même heure locale de Paris, été comme hiver) avec `syncron_core.recurrence`, sans les dates annulées.
-- R&D : les lignes gardent leur identifiant quand un palier est réenregistré, donc leur progression ; une condition chiffrée est remplie dès que `progress ≥ quantity`.
+- R&D : les lignes gardent leur identifiant quand un palier est réenregistré, donc leur progression. Une condition chiffrée ne peut être cochée que si `progress ≥ quantity` (contrainte `done_reached`) ; une récompense n'a qu'un texte (contrainte `reward_text`). La R&D ne publie aucun message.
 - Messagerie : les messages `direct` ont un accusé par destinataire créé à l'envoi ; ceux pour `all` / `staff` ont leur accusé créé à la première lecture. Un nouveau compte voit les annonces des 30 derniers jours.
 
 ### Un service commun : la messagerie
@@ -109,7 +108,6 @@ Tout système publie une nouvelle avec `messaging.post_message(session, system=�
 | Premier login | « Bienvenue » au membre ; « Nouveau compte » à l'équipe |
 | Rôle ou systèmes modifiés | message direct à la personne concernée |
 | Événement créé, modifié ou annulé (« prévenir ») | à tout le pays, avec lien vers l'événement |
-| Palier de R&D terminé, recherche lancée (« prévenir ») | à tout le pays, avec conditions ou récompenses |
 | Annonce | à tout le pays, à l'équipe ou à des membres choisis |
 
 ### Ajouter un système côté serveur
@@ -143,7 +141,8 @@ Tout système publie une nouvelle avec `messaging.post_message(session, system=�
 | GET | `/api/v1/admin/overview`, `/api/v1/admin/audit?system=` | éditeur (ses systèmes) |
 | PUT, DELETE | `/api/v1/admin/craft/{items,stations,skills}/{id}[/image]` · POST `/import` · GET `/export` | Craft (`replace` : admin) |
 | PUT, DELETE | `/api/v1/admin/research/categories/{id}[/tiers/{niveau}]` | R&D |
-| PATCH | `/api/v1/admin/research/lines/{id}` (condition cochée, quantité réunie) | R&D |
+| PATCH | `/api/v1/admin/research/lines/{id}` (quantité réunie, condition cochée une fois atteinte) | R&D |
+| POST, DELETE | `/api/v1/admin/research/categories/{id}/tiers/{niveau}/validate` (palier fait en jeu, ou annulation du dernier) | R&D |
 | GET, POST, PUT, DELETE | `/api/v1/admin/calendar/events[/{id}]` (fiches, une ligne par série) | Calendrier |
 | POST | `/api/v1/admin/calendar/events/{id}/skip` (annuler ou rétablir une date) | Calendrier |
 | GET, POST, DELETE | `/api/v1/admin/messages[/{id}]`, `/recipients` | Messagerie |
@@ -157,7 +156,7 @@ Launcher ──▶ LoginWindow ──(Discord / reprise / hors ligne)──▶ S
    │                                                            │
    ├─ ApiClient (httpx, renouvellement des jetons)              ├─ Accueil (cartes des outils) · Paramètres
    ├─ TokenStore (coffre du système, ou fichier en repli)       ├─ Messagerie            (barre latérale, en haut)
-   ├─ CatalogStore (cache disque, ETag, images)                 ├─ Craft · R&D · Calendrier · Convertisseur
+   ├─ CatalogStore (cache disque, ETag, images)                 ├─ Craft · R&D · Calendrier · Convertisseur · Alertes (en travaux)
    ├─ NotificationCenter (cloche, bulles, bureau)               └─ Administration        (Gestion, éditeurs+)
    ├─ Session (utilisateur, rôle, systèmes confiés, en ligne)
    └─ TaskRunner (QThreadPool → retour dans le thread de l'interface)
@@ -189,4 +188,4 @@ Launcher ──▶ LoginWindow ──(Discord / reprise / hors ligne)──▶ S
 |---|---|
 | `tests/core` | calcul (arrondis fusionnés, temps, ateliers, prérequis, stock), format JSON, validation, convertisseur (décomposition, saisie libre) |
 | `tests/server` | sur **PostgreSQL réel** : parcours Discord, jetons, droits par rôle **et par système**, catalogue (écritures refusées, suppressions expliquées, images, import / export), vue d'ensemble par système, R&D (paliers, limites, recherche unique, annonces), calendrier (périodes, fuseaux, annonces), messagerie (audiences, lu / supprimé, annonces retirées) |
-| `tests/client` | contre un **vrai serveur uvicorn** : connexion, Craft, administration par système, comptes et systèmes confiés, notifications et messagerie, calendrier de bout en bout (création → message → lien), R&D (édition → progression → message), convertisseur, hors-ligne |
+| `tests/client` | contre un **vrai serveur uvicorn** : connexion, Craft, administration par système, comptes et systèmes confiés, notifications et messagerie, calendrier de bout en bout (création → message → lien), R&D (édition → suivi des conditions → validation dans l'ordre), page Alertes, convertisseur, hors-ligne |

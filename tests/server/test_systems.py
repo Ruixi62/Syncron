@@ -87,7 +87,7 @@ async def test_research_has_the_five_domains(client, player):
     }
 
 
-async def test_research_tiers_progress_and_announcements(client, seeded, editor, player):
+async def test_research_tiers_are_validated_in_order_without_messages(client, seeded, editor, player):
     tier = {
         "name": "Fondations",
         "conditions": [{"text": "", "item_id": "quartz", "quantity": 2000}, {"text": "Avoir 10 membres", "done": True}],
@@ -97,30 +97,47 @@ async def test_research_tiers_progress_and_announcements(client, seeded, editor,
     assert saved.status_code == 200, saved.text
     first = saved.json()["tiers"][0]
     assert [c["quantity"] for c in first["conditions"]] == [2000, None] and first["conditions"][1]["done"]
+    assert first["rewards"] == [{"id": first["rewards"][0]["id"], "text": "+5 % de vitesse de craft"}]
+    assert "active" not in saved.json()
     assert (await client.put(f"{RESEARCH}/militaire/tiers/17", json=tier, headers=editor)).status_code == 422
     empty = await client.put(f"{RESEARCH}/militaire/tiers/2", json={"conditions": [{"text": ""}]}, headers=editor)
     assert empty.status_code == 422
+    item_reward = {"rewards": [{"item_id": "quartz"}]}
+    no_text = await client.put(f"{RESEARCH}/militaire/tiers/2", json=item_reward, headers=editor)
+    assert no_text.status_code == 422
+    second = {"conditions": [{"text": "Casser 180 minerais", "quantity": 180}], "rewards": [{"text": "Tourelles"}]}
+    assert (await client.put(f"{RESEARCH}/militaire/tiers/2", json=second, headers=editor)).status_code == 200
 
     shrink = {"name": "Militaire", "tier_count": 0}
     refused = await client.put(f"{RESEARCH}/militaire", json=shrink, headers=editor)
     assert refused.status_code == 409 and "1" in refused.json()["detail"]
 
-    start = {"name": "Militaire", "tier_count": 16, "completed": 0, "active": True, "notify": True}
-    assert (await client.put(f"{RESEARCH}/militaire", json=start, headers=editor)).json()["active"]
-    other = {"name": "Global", "tier_count": 16, "active": True}
-    assert (await client.put(f"{RESEARCH}/global", json=other, headers=editor)).json()["active"]
-    categories = (await client.get("/api/v1/research", headers=player)).json()["categories"]
-    assert [c["id"] for c in categories if c["active"]] == ["global"]
+    validate = f"{RESEARCH}/militaire/tiers/{{}}/validate"
+    unmet = await client.post(validate.format(1), headers=editor)
+    assert unmet.status_code == 409 and "1 / 2" in unmet.json()["detail"]
+    current = (await client.get("/api/v1/research", headers=player)).json()["categories"][1]["tiers"]
+    ore = current[1]["conditions"][0]["id"]
+    await client.patch(f"/api/v1/admin/research/lines/{ore}", json={"progress": 180, "done": True}, headers=editor)
+    out_of_order = await client.post(validate.format(2), headers=editor)
+    assert out_of_order.status_code == 409 and "palier 1" in out_of_order.json()["detail"]
 
-    done = {"name": "Militaire", "tier_count": 16, "completed": 1, "notify": True}
-    assert (await client.put(f"{RESEARCH}/militaire", json=done, headers=editor)).json()["completed"] == 1
-    inbox = await _inbox(client, player)
-    assert inbox[0]["title"] == "R&D Militaire : palier 1 terminé" and "vitesse de craft" in inbox[0]["body"]
-    assert inbox[1]["title"] == "Recherche lancée : Militaire, palier 1"
-    assert "2\u202f000 × Quartz" in inbox[1]["body"] and inbox[1]["link_key"] == "militaire:1"
+    quartz = current[0]["conditions"][0]["id"]
+    await client.patch(f"/api/v1/admin/research/lines/{quartz}", json={"progress": 2000}, headers=editor)
+    await client.patch(f"/api/v1/admin/research/lines/{quartz}", json={"done": True}, headers=editor)
+    assert (await client.post(validate.format(1), headers=player)).status_code == 403
+    assert (await client.post(validate.format(1), headers=editor)).json()["completed"] == 1
+    assert (await client.post(validate.format(1), headers=editor)).status_code == 409
+    assert (await client.post(validate.format(2), headers=editor)).json()["completed"] == 2
+    assert (await client.delete(validate.format(1), headers=editor)).status_code == 409
+    assert (await client.delete(validate.format(2), headers=editor)).json()["completed"] == 1
+    titles = [m["title"] for m in await _inbox(client, player)]
+    assert not any("R&D" in title or "Recherche" in title for title in titles)
+
     too_far = {"name": "Militaire", "tier_count": 16, "completed": 17}
     assert (await client.put(f"{RESEARCH}/militaire", json=too_far, headers=editor)).status_code == 422
-    assert (await client.put(f"{RESEARCH}/militaire", json=done, headers=player)).status_code == 403
+    fixed = {"name": "Militaire", "tier_count": 16, "completed": 5}
+    assert (await client.put(f"{RESEARCH}/militaire", json=fixed, headers=editor)).json()["completed"] == 5
+    assert (await client.put(f"{RESEARCH}/militaire", json=fixed, headers=player)).status_code == 403
 
 
 async def test_research_domains_can_be_added_and_removed(client, editor, admin):
@@ -241,10 +258,10 @@ async def test_meta_exposes_systems_and_nation(client, settings):
 # -- 4.3 : progression des conditions, récurrence -------------------------------------------
 
 
-async def test_condition_progress_is_tracked_and_kept_when_the_tier_is_edited(client, seeded, editor, admin, player):
+async def test_condition_can_only_be_ticked_once_its_quantity_is_reached(client, seeded, editor, admin, player):
     tier = {
         "conditions": [
-            {"text": "Déposer des circuits élites", "quantity": 1000, "progress": 0},
+            {"text": "Déposer des circuits élites", "quantity": 1000, "progress": 0, "done": True},
             {"text": "Casser des minerais obscurs", "quantity": 180},
             {"text": "Avoir 10 membres"},
         ],
@@ -252,25 +269,28 @@ async def test_condition_progress_is_tracked_and_kept_when_the_tier_is_edited(cl
     }
     saved = (await client.put(f"{RESEARCH}/militaire/tiers/3", json=tier, headers=editor)).json()
     circuits, ores, members = saved["tiers"][2]["conditions"]
-    patched = await client.patch(
-        f"/api/v1/admin/research/lines/{circuits['id']}", json={"progress": 380}, headers=editor
-    )
+    assert not circuits["done"]
+    lines = "/api/v1/admin/research/lines"
+    patched = await client.patch(f"{lines}/{circuits['id']}", json={"progress": 380}, headers=editor)
     assert patched.status_code == 200
     first = patched.json()["tiers"][2]["conditions"][0]
     assert (first["progress"], first["quantity"], first["done"]) == (380, 1000, False)
-    full = await client.patch(f"/api/v1/admin/research/lines/{ores['id']}", json={"progress": 180}, headers=editor)
-    assert full.json()["tiers"][2]["conditions"][1]["done"]
-    no_quantity = await client.patch(
-        f"/api/v1/admin/research/lines/{members['id']}", json={"progress": 3}, headers=editor
-    )
-    assert no_quantity.status_code == 422
-    rewards = saved["tiers"][2]["rewards"][0]["id"]
-    assert (
-        await client.patch(f"/api/v1/admin/research/lines/{rewards}", json={"done": True}, headers=editor)
-    ).status_code == 404
-    assert (
-        await client.patch(f"/api/v1/admin/research/lines/{members['id']}", json={"done": True}, headers=player)
-    ).status_code == 403
+    early = await client.patch(f"{lines}/{circuits['id']}", json={"done": True}, headers=editor)
+    assert early.status_code == 422 and "620" in early.json()["detail"]
+
+    full = await client.patch(f"{lines}/{ores['id']}", json={"progress": 180}, headers=editor)
+    assert not full.json()["tiers"][2]["conditions"][1]["done"]
+    ticked = await client.patch(f"{lines}/{ores['id']}", json={"done": True}, headers=editor)
+    assert ticked.json()["tiers"][2]["conditions"][1]["done"]
+    lowered = await client.patch(f"{lines}/{ores['id']}", json={"progress": 90}, headers=editor)
+    assert not lowered.json()["tiers"][2]["conditions"][1]["done"]
+    members_done = await client.patch(f"{lines}/{members['id']}", json={"done": True}, headers=editor)
+    assert members_done.json()["tiers"][2]["conditions"][2]["done"]
+
+    assert (await client.patch(f"{lines}/{members['id']}", json={"progress": 3}, headers=editor)).status_code == 422
+    reward = saved["tiers"][2]["rewards"][0]["id"]
+    assert (await client.patch(f"{lines}/{reward}", json={"done": True}, headers=editor)).status_code == 404
+    assert (await client.patch(f"{lines}/{members['id']}", json={"done": True}, headers=player)).status_code == 403
 
     current = (await client.get("/api/v1/research", headers=player)).json()["categories"][1]["tiers"][2]
     edited = {
@@ -281,13 +301,12 @@ async def test_condition_progress_is_tracked_and_kept_when_the_tier_is_edited(cl
     kept = (await client.put(f"{RESEARCH}/militaire/tiers/3", json=edited, headers=editor)).json()["tiers"][2]
     assert [c["id"] for c in kept["conditions"]] == [circuits["id"], ores["id"]]
     assert kept["conditions"][0]["progress"] == 380 and kept["conditions"][0]["text"].endswith("!")
+    assert kept["rewards"][0]["id"] == reward
 
-    await client.patch(f"/api/v1/admin/research/lines/{circuits['id']}", json={"progress": 1000}, headers=editor)
     staff = [m["title"] for m in await _inbox(client, admin)]
-    assert "R&D Militaire, palier 3 : toutes les conditions sont remplies" in staff
-    assert "toutes les conditions" not in " ".join(m["title"] for m in await _inbox(client, player))
+    assert not any("R&D" in title for title in staff)
     log = (await client.get("/api/v1/admin/audit?system=research", headers=admin)).json()
-    assert log[0]["summary"].endswith("1000 / 1000")
+    assert any(entry["summary"].endswith("380 / 1000, à faire") for entry in log)
 
 
 async def test_recurring_events_are_expanded_and_can_skip_a_date(client, editor, player):

@@ -162,6 +162,7 @@ QPushButton[variant="primary"] {{ background: {c.accent}; color: {c.accent_text}
                                   font-weight: 600; }}
 QPushButton[variant="primary"]:hover {{ background: {c.accent_hover}; border-color: {c.accent_hover}; }}
 QPushButton[variant="primary"]:pressed {{ background: {c.accent_pressed}; }}
+QPushButton[variant="primary"]:disabled {{ background: {c.surface}; color: {c.text_faint}; border-color: {c.border}; }}
 QPushButton[variant="ghost"], QToolButton[variant="ghost"] {{ background: transparent; border-color: transparent; }}
 QPushButton[variant="ghost"]:hover, QToolButton[variant="ghost"]:hover {{ background: {c.surface_alt};
                                                                           border-color: {c.border}; }}
@@ -204,7 +205,9 @@ QCheckBox::indicator {{ width: 16px; height: 16px; border-radius: 5px; border: 1
                         background: {c.surface_alt}; }}
 QCheckBox::indicator:hover {{ border-color: {c.text_faint}; }}
 QCheckBox::indicator:checked {{ background: {c.accent}; border-color: {c.accent}; image: url("{CHECK_IMAGE}"); }}
-QCheckBox::indicator:disabled {{ background: {c.surface}; border-color: {c.border}; }}
+QCheckBox::indicator:disabled {{ background: transparent; border: 1px dashed {c.border_strong}; }}
+QCheckBox::indicator:checked:disabled {{ background: {c.accent_soft}; border: 1px solid {c.accent_soft}; }}
+QCheckBox:disabled {{ color: {c.text_faint}; }}
 QProgressBar {{ background: {c.surface_alt}; border: none; border-radius: 4px; max-height: 8px; min-height: 8px;
                 text-align: center; color: transparent; }}
 QProgressBar::chunk {{ background: {c.accent}; border-radius: 4px; }}

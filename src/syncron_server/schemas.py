@@ -222,8 +222,17 @@ class ResearchLineIn(BaseModel):
         return self
 
 
+class ResearchRewardIn(BaseModel):
+    """Récompense : un texte seul. `id` : récompense existante à mettre à jour."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+    id: int | None = None
+    text: str = Field(min_length=1, max_length=300)
+
+
 class ResearchLinePatch(BaseModel):
-    """Suivi d'une condition depuis la page R&D : cochée, ou quantité réunie (380 sur 1 000)."""
+    """Suivi d'une condition depuis la page R&D : quantité réunie (380 sur 1 000), ou cochée
+    (une condition chiffrée ne peut l'être qu'une fois sa quantité atteinte)."""
 
     done: bool | None = None
     progress: int | None = Progress
@@ -238,12 +247,17 @@ class ResearchLineOut(BaseModel):
     done: bool
 
 
+class ResearchRewardOut(BaseModel):
+    id: int
+    text: str
+
+
 class ResearchTierIn(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     name: str = Field("", max_length=120)
     description: str = Description
     conditions: list[ResearchLineIn] = Field(default_factory=list, max_length=100)
-    rewards: list[ResearchLineIn] = Field(default_factory=list, max_length=100)
+    rewards: list[ResearchRewardIn] = Field(default_factory=list, max_length=100)
 
 
 class ResearchTierOut(BaseModel):
@@ -251,7 +265,7 @@ class ResearchTierOut(BaseModel):
     name: str
     description: str
     conditions: list[ResearchLineOut]
-    rewards: list[ResearchLineOut]
+    rewards: list[ResearchRewardOut]
 
 
 class ResearchCategoryIn(BaseModel):
@@ -262,9 +276,7 @@ class ResearchCategoryIn(BaseModel):
     position: int = Field(0, ge=0, le=1000)
     tier_count: int = Field(0, ge=0, le=100)
     completed: int = Field(0, ge=0, le=100)
-    active: bool = False
     skill_id: str | None = Field(None, max_length=80)
-    notify: bool = False
 
 
 class ResearchCategoryOut(BaseModel):
@@ -275,7 +287,6 @@ class ResearchCategoryOut(BaseModel):
     position: int
     tier_count: int
     completed: int
-    active: bool
     skill_id: str | None
     updated_at: datetime
     tiers: list[ResearchTierOut]

@@ -169,6 +169,12 @@ class ApiClient:
     def delete_research_category(self, category_id: str) -> None:
         self._request("DELETE", f"/api/v1/admin/research/categories/{category_id}")
 
+    def validate_research_tier(self, category_id: str, level: int) -> dict[str, Any]:
+        return self._json("POST", f"/api/v1/admin/research/categories/{category_id}/tiers/{level}/validate")
+
+    def unvalidate_research_tier(self, category_id: str, level: int) -> dict[str, Any]:
+        return self._json("DELETE", f"/api/v1/admin/research/categories/{category_id}/tiers/{level}/validate")
+
     # -- calendrier ---------------------------------------------------------------------------
 
     def events(self, start: datetime, end: datetime) -> list[dict[str, Any]]:

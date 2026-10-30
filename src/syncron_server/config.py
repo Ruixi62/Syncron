@@ -34,7 +34,7 @@ class Settings(BaseSettings):
 
     media_dir: Path = Path("media")
     max_image_bytes: int = 2 * 1024 * 1024
-    min_client_version: str = "4.3.0"
+    min_client_version: str = "4.4.0"
     nation_name: str = Field("", max_length=60, description="Nom du pays affiché dans le client")
     dev_login: bool = Field(False, description="Connexion sans Discord, réservée au développement local")
     auth_rate_limit: int = Field(30, ge=0, description="Requêtes de connexion par minute et par adresse (0 = illimité)")

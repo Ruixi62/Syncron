@@ -1,8 +1,10 @@
 """Page R&D : les domaines du pays, leur avancement, et le détail de chaque palier.
 
-Les comptes qui gèrent la R&D suivent la progression directement ici :
-cocher une condition remplie, saisir la quantité réunie (380 / 1 000),
-lancer un palier ou le déclarer terminé.
+Les comptes qui gèrent la R&D suivent la progression directement ici, sur tous les
+paliers à la fois : saisir la quantité réunie (380 / 1 000), cocher une condition remplie
+(une condition chiffrée seulement une fois sa quantité atteinte). Quand le prochain
+palier a été fait en jeu, « Valider le palier » l'enregistre ; les paliers se valident
+dans l'ordre, et les récompenses d'un palier ne s'obtiennent qu'après le précédent.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QProgressBar,
+    QPushButton,
     QScrollArea,
     QSpinBox,
     QVBoxLayout,
@@ -30,7 +33,7 @@ from syncron_core.catalog_service import CatalogService
 from syncron_core.converter import STACK, decompose
 from syncron_core.text import format_quantity
 
-START, COMPLETE = "start", "complete"
+VALIDATE, UNVALIDATE = "validate", "unvalidate"
 
 
 def _bar(maximum: int, value: int, color: str = COLORS.accent) -> QProgressBar:
@@ -78,10 +81,10 @@ class DomainCard(QFrame):
         texts.setSpacing(2)
         texts.addWidget(label(domain.name, "heading"))
         state = domain.progress_text
-        if domain.active:
-            state += " · en cours"
-        elif domain.finished:
+        if domain.finished:
             state += " · terminé"
+        elif domain.ready():
+            state += " · prêt à valider"
         texts.addWidget(label(state, "faint"))
         head = QHBoxLayout()
         head.setSpacing(10)
@@ -115,7 +118,14 @@ class ConditionRow(QWidget):
         if editable and line.id is not None:
             self.done_box = QCheckBox()
             self.done_box.setChecked(line.done)
-            self.done_box.setToolTip("Condition remplie")
+            self.done_box.setEnabled(line.reached)
+            if line.reached:
+                self.done_box.setToolTip("Condition remplie")
+            else:
+                self.done_box.setToolTip(
+                    f"Il en manque {format_quantity(line.missing)} : la case se coche une fois "
+                    f"{format_quantity(line.quantity)} atteint."
+                )
             self.done_box.toggled.connect(lambda checked: self.changed.emit(line.id, {"done": checked}))
             top.addWidget(self.done_box, 0, Qt.AlignmentFlag.AlignTop)
         else:
@@ -174,7 +184,7 @@ class ConditionRow(QWidget):
 
 class TierCard(Card):
     lineChanged = Signal(int, dict)
-    actionRequested = Signal(str, int)  # START / COMPLETE, palier
+    actionRequested = Signal(str, int)  # VALIDATE / UNVALIDATE, palier
     editRequested = Signal(int)
 
     def __init__(
@@ -191,25 +201,33 @@ class TierCard(Card):
         status = domain.status(tier.level)
         self.status = status
         self.rows: list[ConditionRow] = []
-        if status is TierStatus.ACTIVE:
+        self.validate_button: QPushButton | None = None
+        self.unvalidate_button: QPushButton | None = None
+        if status is TierStatus.NEXT:
             self.setStyleSheet(f"QFrame[card='flat'] {{ border: 1px solid {COLORS.accent}; }}")
         head = QHBoxLayout()
         head.setSpacing(8)
         head.addWidget(label(tier.title, "heading"), 1)
         if tier.conditions:
-            head.addWidget(Chip(f"{tier.done_count} / {len(tier.conditions)} conditions", "neutral"))
+            tone = "success" if tier.complete else "neutral"
+            head.addWidget(Chip(f"{tier.done_count} / {len(tier.conditions)} conditions", tone))
         head.addWidget(Chip(status.label, status.tone, status.icon))
         if editable:
-            if status is TierStatus.NEXT and not domain.active:
-                start = button("Lancer", "play", "ghost")
-                start.setToolTip("Déclarer ce palier comme recherche en cours")
-                start.clicked.connect(lambda: self.actionRequested.emit(START, tier.level))
-                head.addWidget(start)
-            if status is TierStatus.ACTIVE:
-                complete = button("Valider", "check", "ghost")
-                complete.setToolTip("Déclarer ce palier terminé (le pays est prévenu)")
-                complete.clicked.connect(lambda: self.actionRequested.emit(COMPLETE, tier.level))
-                head.addWidget(complete)
+            if status is TierStatus.NEXT:
+                self.validate_button = button("Valider le palier", "check", "primary")
+                self.validate_button.setEnabled(domain.can_validate(tier.level))
+                if self.validate_button.isEnabled():
+                    self.validate_button.setToolTip("Le palier a été fait en jeu : l'enregistrer comme validé")
+                else:
+                    self.validate_button.setToolTip(
+                        f"Remplis d'abord toutes les conditions ({tier.done_count} / {len(tier.conditions)})"
+                    )
+                self.validate_button.clicked.connect(lambda: self.actionRequested.emit(VALIDATE, tier.level))
+                head.addWidget(self.validate_button)
+            if status is TierStatus.DONE and tier.level == domain.completed:
+                self.unvalidate_button = icon_button("history", "Annuler la validation de ce palier", 15)
+                self.unvalidate_button.clicked.connect(lambda: self.actionRequested.emit(UNVALIDATE, tier.level))
+                head.addWidget(self.unvalidate_button)
             edit = icon_button("edit", "Modifier ce palier dans l'administration", 15)
             edit.clicked.connect(lambda: self.editRequested.emit(tier.level))
             head.addWidget(edit)
@@ -232,6 +250,7 @@ class TierCard(Card):
             self.rows.append(row)
             conditions.addWidget(row)
         conditions.addStretch(1)
+        locked = status is TierStatus.LOCKED
         rewards = QVBoxLayout()
         rewards.setSpacing(6)
         rewards.addWidget(label("RÉCOMPENSES", "overline"))
@@ -241,10 +260,17 @@ class TierCard(Card):
             row = QHBoxLayout()
             row.setSpacing(8)
             glyph = QLabel()
-            glyph.setPixmap(icons.pixmap("gift", COLORS.violet, 16))
+            name, color = ("lock", COLORS.text_faint) if locked else ("gift", COLORS.violet)
+            glyph.setPixmap(icons.pixmap(name, color, 16))
             row.addWidget(glyph, 0, Qt.AlignmentFlag.AlignTop)
-            row.addWidget(label(line.describe(catalog), wrap=True), 1)
+            text = label(line.text, "faint" if locked else None, wrap=True)
+            row.addWidget(text, 1)
             rewards.addLayout(row)
+        self.rewards_note: QLabel | None = None
+        if locked and tier.rewards:
+            note = f"Accessibles après la validation du palier {tier.level - 1}."
+            self.rewards_note = label(note, "faint", wrap=True)
+            rewards.addWidget(self.rewards_note)
         rewards.addStretch(1)
         columns.addLayout(conditions, 3)
         columns.addLayout(rewards, 2)
@@ -257,7 +283,7 @@ class TierCard(Card):
 class ResearchPage(QWidget):
     manageRequested = Signal(str)  # clé « domaine » ou « domaine:palier »
     lineChanged = Signal(int, dict)  # id de la condition, modification
-    actionRequested = Signal(str, str, int)  # domaine, START / COMPLETE, palier
+    actionRequested = Signal(str, str, int)  # domaine, VALIDATE / UNVALIDATE, palier
 
     def __init__(self, catalog: CatalogService, icon_provider: IconProvider, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -298,7 +324,8 @@ class ResearchPage(QWidget):
         self.manage_button = button("Gérer", "edit")
         self.manage_button.clicked.connect(lambda: self._selected and self.manageRequested.emit(self._selected))
         self.hint = label(
-            "Coche les conditions remplies et saisis les quantités réunies : tout le pays voit l'avancement.",
+            "Saisis les quantités réunies et coche les conditions remplies, sur n'importe quel palier : tout le "
+            "pays voit l'avancement. Quand le prochain palier est fait en jeu, clique sur « Valider le palier ».",
             "faint",
             wrap=True,
         )
@@ -379,8 +406,7 @@ class ResearchPage(QWidget):
         position = self._tiers_scroll.verticalScrollBar().value()
         self._domains = domains
         if self._selected not in {d.id for d in domains}:
-            active = next((d for d in domains if d.active), None)
-            self._selected = (active or domains[0]).id if domains else None
+            self._selected = domains[0].id if domains else None
         self._render()
         QTimer.singleShot(0, lambda: self._tiers_scroll.verticalScrollBar().setValue(position))
 
@@ -408,9 +434,7 @@ class ResearchPage(QWidget):
             self._domain_list.addWidget(card)
         total = sum(d.tier_count for d in self._domains)
         done = sum(d.completed for d in self._domains)
-        active = next((d for d in self._domains if d.active), None)
-        running = f"Recherche en cours : {active.name}, palier {active.completed + 1}." if active else ""
-        self.summary.setText(f"{done} palier(s) terminé(s) sur {total}. {running}".strip())
+        self.summary.setText(f"{done} palier(s) validé(s) sur {total}.")
         domain = self.selected
         self._detail.setVisible(domain is not None)
         self._empty.setVisible(domain is None)
@@ -427,8 +451,8 @@ class ResearchPage(QWidget):
         self.progress_label.setText(domain.progress_text)
         self.progress.setRange(0, max(domain.tier_count, 1))
         self.progress.setValue(domain.completed)
-        if domain.active:
-            self.state_chip.set_content(f"Palier {domain.completed + 1} en cours", "accent", "play")
+        if domain.ready():
+            self.state_chip.set_content(f"Palier {domain.next_level} prêt à valider", "success", "check")
         elif domain.finished:
             self.state_chip.set_content("Domaine terminé", "success", "check")
         elif domain.tier_count == 0:
