@@ -41,7 +41,7 @@ class CalendarTool(Tool):
         name="Calendrier",
         description="Réunions, guerres, événements et rendez-vous économiques du pays.",
         icon="calendar",
-        version="4.3.0",
+        version="4.5.0",
         system="calendar",
     )
 

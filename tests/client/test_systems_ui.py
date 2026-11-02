@@ -21,7 +21,7 @@ def test_home_lists_country_tools_without_admin_and_hides_search(make_launcher, 
     shell = sign_in(make_launcher())
     window = shell.window
     window.show_page("home")
-    assert window._home.card_ids == ["craft", "research", "calendar", "converter", "alerts"]
+    assert window._home.card_ids == ["craft", "research", "calendar", "converter", "images", "alerts"]
     assert window._home._title.text() == "Empire du Levant"
     assert "outils internes de Empire du Levant" in window._home._intro.text()
     assert not window.top_bar.search_visible()
@@ -349,3 +349,91 @@ def test_user_text_is_never_rendered_as_html(make_launcher, tmp_path):
     page.list.setCurrentRow(0)
     assert page.view.title.textFormat() == Qt.TextFormat.PlainText
     assert page.view.title.text() == "<b>Piège</b> <a href='http://x'>clic</a>"
+
+
+# -- 4.5 ----------------------------------------------------------------------------------------
+
+
+def test_images_are_uploaded_shared_and_managed(make_launcher, tmp_path):
+    from PySide6.QtCore import QMimeData
+    from PySide6.QtGui import QColor, QGuiApplication, QImage
+
+    picture = tmp_path / "plan_du_qg.png"
+    QImage(64, 32, QImage.Format.Format_ARGB32).save(str(picture))
+    author = member(make_launcher, tmp_path, "auteur")
+    author.window.show_page("images")
+    tool = author.registry.get("images")
+    tool.upload_files([picture])
+    assert [image.title for image in tool.images] == ["plan du qg"]
+    image = tool.images[0]
+    assert tool.last_link == tool.link(image) and QGuiApplication.clipboard().text() == tool.last_link
+    assert tool.last_link.startswith("http") and "/media/images/" in tool.last_link
+    card = tool.page.cards[image.id]
+    assert card.delete_button is not None and not card.thumb.pixmap().isNull()
+
+    capture = QImage(20, 20, QImage.Format.Format_RGB32)
+    capture.fill(QColor("#3fcfb8"))
+    mime = QMimeData()
+    mime.setImageData(capture)
+    assert tool.page.receive(mime)
+    assert [i.title for i in tool.images] == ["capture", "plan du qg"]
+    tool.rename(tool.images[0].id, "Capture du front")
+    assert tool.images[0].title == "Capture du front"
+
+    other = member(make_launcher, tmp_path, "voisin")
+    other.window.show_page("images")
+    seen = other.registry.get("images")
+    assert len(seen.images) == 2 and all(card.delete_button is None for card in seen.page.cards.values())
+    seen.page.scope.set_current_index(1)
+    assert seen.images == [] and "aucune image" in seen.page.empty.body_label.text()
+
+    tool.delete(image.id)
+    assert [i.title for i in tool.images] == ["Capture du front"]
+    tool.page.search.setText("front")
+    assert list(tool.page.cards) == [tool.images[0].id]
+
+
+def test_light_theme_is_applied_and_remembered(make_launcher, tmp_path):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtWidgets import QApplication
+
+    from syncron_client.ui.theme import COLORS, DARK, LIGHT, apply_theme
+
+    for widget in QApplication.topLevelWidgets():
+        if not widget.isVisible():
+            widget.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    launcher = make_launcher(user_dir=tmp_path / "clair")
+    shell = sign_in(launcher, "clair", "admin")
+    shell.window.show_page("research")
+    shell.window._settings_page.theme_choice.set_current_index(2)
+    QApplication.processEvents()
+    try:
+        assert COLORS.bg == LIGHT.bg and not COLORS.dark
+        assert launcher.settings.get("theme") == "light"
+        new_window = launcher.shell.window
+        assert new_window is not shell.window and new_window.current_page == "research"
+        assert LIGHT.bg in QApplication.instance().styleSheet()
+        new_window._settings_page.theme_choice.set_current_index(1)
+        QApplication.processEvents()
+        assert COLORS.bg == DARK.bg and launcher.settings.get("theme") == "dark"
+    finally:
+        apply_theme(QApplication.instance(), "dark")
+
+
+def test_hidden_heart_opens_the_love_page(make_launcher, tmp_path):
+    from syncron_client.shell.love_page import LOVE_ID, MESSAGE, LovePage
+
+    shell = member(make_launcher, tmp_path)
+    window = shell.window
+    window.show_page("settings")
+    window._settings_page.heart.clicked.emit()
+    assert window.current_page == LOVE_ID
+    page = window._pages[LOVE_ID]
+    assert isinstance(page, LovePage) and page.message.text() == MESSAGE == "Je t'aime Emma-Lou"
+    page.canvas.start()
+    for _ in range(30):
+        page.canvas._advance()
+    assert page.canvas.floating and page.canvas.beat() >= 1.0
+    page.backRequested.emit()
+    assert window.current_page == "settings" and not page.canvas.running

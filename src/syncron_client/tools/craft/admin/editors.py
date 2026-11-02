@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 from syncron_client.tools.craft.admin.context import CraftAdminContext
 from syncron_client.ui.entity_list import EntityList
 from syncron_client.ui.tables import ROW_HEIGHT
+from syncron_client.ui.theme import COLORS
 from syncron_client.ui.widgets import Banner, Card, SegmentedControl, ask, button, compact_combo, icon_button, label
 from syncron_core.catalog import ID_PATTERN, ID_RULE
 from syncron_core.duration import DurationError, format_duration, parse_duration
@@ -91,7 +92,7 @@ class EntityEditor(QWidget):
         self.description_field.setFixedHeight(72)
 
         self.delete_button = button("Supprimer", "trash", "ghost")
-        self.delete_button.setStyleSheet("QPushButton { color: #f2555a; }")
+        self.delete_button.setStyleSheet(f"QPushButton {{ color: {COLORS.danger}; }}")
         self.delete_button.clicked.connect(self._delete)
         self.revert_button = button("Annuler", None, "ghost")
         self.revert_button.setToolTip("Annuler les modifications")
@@ -570,7 +571,7 @@ class ItemEditor(EntityEditor):
             seconds = parse_duration(text.strip() or 0)
         except DurationError:
             self.time_preview.setText("illisible")
-            self.time_preview.setStyleSheet("color: #f2555a;")
+            self.time_preview.setStyleSheet(f"color: {COLORS.danger};")
             return
         self.time_preview.setStyleSheet("")
         self.time_preview.setText(format_duration(seconds))

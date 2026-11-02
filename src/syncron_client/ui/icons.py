@@ -99,6 +99,11 @@ ICONS: dict[str, str] = {
     "check-circle": '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
     "circle": '<circle cx="12" cy="12" r="9"/>',
     "play": '<circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/>',
+    "heart": '<path d="M12 20.5 4.3 12.9a4.9 4.9 0 0 1 6.9-6.9l.8.8.8-.8a4.9 4.9 0 0 1 6.9 6.9z"/>',
+    "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2'
+    'M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    "moon": '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+    "monitor": '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
     "lock": '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
     "today": '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'
     '<rect x="10" y="13" width="4" height="4" rx="1"/>',
@@ -111,7 +116,8 @@ _SVG = (
 _cache: dict[tuple[str, str, int, float], QPixmap] = {}
 
 
-def pixmap(name: str, color: str = COLORS.text_muted, size: int = 18, stroke: float = 1.8) -> QPixmap:
+def pixmap(name: str, color: str | None = None, size: int = 18, stroke: float = 1.8) -> QPixmap:
+    color = color or COLORS.text_muted
     ratio = _device_ratio()
     key = (name, color, size, ratio)
     cached = _cache.get(key)
@@ -131,8 +137,9 @@ def pixmap(name: str, color: str = COLORS.text_muted, size: int = 18, stroke: fl
     return image
 
 
-def icon(name: str, color: str = COLORS.text_muted, size: int = 18, active_color: str | None = None) -> QIcon:
+def icon(name: str, color: str | None = None, size: int = 18, active_color: str | None = None) -> QIcon:
     """`active_color` : couleur à l'état coché/survolé (navigation, segments)."""
+    color = color or COLORS.text_muted
     result = QIcon()
     result.addPixmap(pixmap(name, color, size), QIcon.Mode.Normal, QIcon.State.Off)
     result.addPixmap(pixmap(name, COLORS.text_faint, size), QIcon.Mode.Disabled, QIcon.State.Off)

@@ -41,8 +41,8 @@ class LoginWindow(QWidget):
         brand = QFrame()
         brand.setObjectName("LoginBrand")
         brand.setStyleSheet(
-            "#LoginBrand { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0f2a25, stop:0.6 #0d1520,"
-            f" stop:1 #0b1a2a); border-right: 1px solid {COLORS.border}; }}"
+            "#LoginBrand { background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+            f" stop:0 {COLORS.brand_start}, stop:0.6 {COLORS.brand_mid}, stop:1 {COLORS.brand_end}); border: none; }}"
         )
         logo = QLabel()
         logo.setPixmap(logo_pixmap(120))

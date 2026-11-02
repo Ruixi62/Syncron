@@ -15,7 +15,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from PySide6.QtCore import QLocale, QObject
+from PySide6.QtCore import QLocale, QObject, QTimer
 from PySide6.QtWidgets import QApplication
 
 from syncron_client import updater
@@ -37,7 +37,7 @@ from syncron_client.shell.window import ShellWindow
 from syncron_client.tasks import TaskRunner
 from syncron_client.tools import builtin_tools
 from syncron_client.ui.brand import app_icon
-from syncron_client.ui.theme import apply_theme
+from syncron_client.ui.theme import THEME_KEY, ThemeMode, apply_theme, resolve_mode
 from syncron_core import APP_DISPLAY_NAME, APP_NAME, __version__
 
 
@@ -77,18 +77,63 @@ class Launcher(QObject):
         self._use_keyring = use_keyring
         self._transport = api_transport
         self.settings = JsonSettingsStore(paths.settings_file)
+        self.theme = self._apply_theme()
+        app = QApplication.instance()
+        if app is not None:
+            app.styleHints().colorSchemeChanged.connect(self._on_system_scheme_changed)
         self.session = Session()
         self.session.expired.connect(self._on_session_expired)
         self.shell: Shell | None = None
         self._flow: DiscordLoginFlow | None = None
         self._minimum = "0"
         self._connect(resolve_server_url(self.settings))
-        self.login = LoginWindow(self.api.base_url)
-        self.login.discordRequested.connect(self.login_with_discord)
-        self.login.cancelRequested.connect(self._cancel_login)
-        self.login.offlineRequested.connect(self.open_offline)
-        self.login.devLoginRequested.connect(self.dev_login)
-        self.login.serverChangeRequested.connect(self.change_server)
+        self.login = self._build_login()
+
+    def _build_login(self) -> LoginWindow:
+        login = LoginWindow(self.api.base_url)
+        login.discordRequested.connect(self.login_with_discord)
+        login.cancelRequested.connect(self._cancel_login)
+        login.offlineRequested.connect(self.open_offline)
+        login.devLoginRequested.connect(self.dev_login)
+        login.serverChangeRequested.connect(self.change_server)
+        return login
+
+    # -- thème -----------------------------------------------------------------------------
+
+    def _apply_theme(self) -> ThemeMode:
+        app = QApplication.instance()
+        mode = self.settings.get(THEME_KEY, ThemeMode.SYSTEM)
+        return apply_theme(app, mode) if app is not None else resolve_mode(mode)
+
+    def set_theme(self, mode: str) -> None:
+        """Enregistre le choix puis reconstruit les fenêtres avec les nouvelles couleurs
+        (après le clic en cours : la fenêtre qui l'a émis va être remplacée)."""
+        self.settings.set(THEME_KEY, ThemeMode(mode).value)
+        with contextlib.suppress(OSError):
+            self.settings.save()
+        QTimer.singleShot(0, self._rebuild_windows)
+
+    def _on_system_scheme_changed(self, _scheme) -> None:
+        if self.settings.get(THEME_KEY, ThemeMode.SYSTEM) == ThemeMode.SYSTEM and resolve_mode(None) != self.theme:
+            self._rebuild_windows()
+
+    def _rebuild_windows(self) -> None:
+        self.theme = self._apply_theme()
+        old_login = self.login
+        self.login = self._build_login()
+        self.login.set_nation(self.session.nation_name)
+        if old_login.isVisible():
+            self.login.show()
+        old_login.hide()
+        old_login.deleteLater()
+        if self.shell is not None:
+            page = self.shell.window.current_page
+            geometry = self.shell.window.saveGeometry()
+            self._close_shell()
+            self.open_shell()
+            self.shell.window.restoreGeometry(geometry)
+            if page:
+                self.shell.window.show_page(page)
 
     def _connect(self, server_url: str) -> None:
         self.api = ApiClient(server_url, transport=self._transport)
@@ -214,6 +259,7 @@ class Launcher(QObject):
             tool.setup(host)
         window = ShellWindow(registry, host, self.settings)
         window.logoutRequested.connect(self.logout)
+        window.themeRequested.connect(self.set_theme)
         self.catalog.syncFailed.connect(lambda error: host.handle_error(error, "Synchronisation"))
         self.shell = Shell(registry, host, window)
         self.login.hide()

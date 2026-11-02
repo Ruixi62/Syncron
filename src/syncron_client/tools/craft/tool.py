@@ -38,7 +38,7 @@ class CraftTool(Tool):
         name="Craft",
         description="Ressources, étapes, ateliers, prérequis et temps de fabrication.",
         icon="hammer",
-        version="4.3.0",
+        version="4.5.0",
         system="craft",
     )
 

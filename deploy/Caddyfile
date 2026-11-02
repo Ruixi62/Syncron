@@ -6,7 +6,7 @@
 	header @media Cache-Control "public, max-age=31536000, immutable"
 
 	request_body {
-		max_size 4MB
+		max_size 10MB
 	}
 
 	header {

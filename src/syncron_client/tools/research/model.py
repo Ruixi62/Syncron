@@ -93,6 +93,16 @@ class Line:
     def progress_text(self) -> str:
         return f"{format_quantity(self.progress or 0)} / {format_quantity(self.quantity or 0)}"
 
+    def short(self, catalog: CatalogService | None = None) -> str:
+        """Texte affiché à côté de l'image de l'objet : le texte de la condition seul, sans nom d'objet ni
+        quantité (le compteur et l'image les montrent déjà) ; à défaut, le nom de l'objet."""
+        if self.text:
+            return self.text
+        if self.item_id:
+            item = catalog.get(self.item_id) if catalog is not None else None
+            return item.name if item is not None else self.item_id
+        return ""
+
     def describe(self, catalog: CatalogService | None = None) -> str:
         """« 2 000 × Lingot de fer — à déposer au QG », « Avoir 10 membres »."""
         subject = self.text

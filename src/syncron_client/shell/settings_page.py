@@ -1,25 +1,60 @@
-"""Paramètres : compte, notifications, serveur, stockage local, outils, à propos."""
+"""Paramètres : compte, apparence (sombre / clair), notifications, serveur, stockage local, outils, à propos."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtGui import QDesktopServices, QEnterEvent, QMouseEvent
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QLineEdit, QScrollArea, QVBoxLayout, QWidget
 
 from syncron_client.config import SERVER_URL_KEY, is_safe_server_url
 from syncron_client.platform.registry import ToolRegistry
 from syncron_client.platform.tool import NotifyLevel, Placement, ToolHost, ToolStage
 from syncron_client.settings import JsonSettingsStore
-from syncron_client.ui.widgets import Card, Chip, button, divider, label
+from syncron_client.ui import icons
+from syncron_client.ui.theme import COLORS, THEME_KEY, ThemeMode
+from syncron_client.ui.widgets import Card, Chip, SegmentedControl, button, divider, label
 from syncron_core import APP_DISPLAY_NAME, __version__
 
 DESKTOP_NOTIFICATIONS_KEY = "desktop_notifications"
+THEME_CHOICES = (ThemeMode.SYSTEM, ThemeMode.DARK, ThemeMode.LIGHT)
+HEART_COLOR = "#ff4d6d"
+
+
+class HiddenHeart(QLabel):
+    """Tout petit cœur de la couleur des bordures : il ne rosit qu'au survol."""
+
+    clicked = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFixedSize(16, 16)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._show(COLORS.border_strong)
+
+    def _show(self, color: str) -> None:
+        self.setPixmap(icons.pixmap("heart", color, 11, stroke=2.2))
+
+    def enterEvent(self, event: QEnterEvent) -> None:
+        self._show(HEART_COLOR)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._show(COLORS.border_strong)
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 
 class SettingsPage(QScrollArea):
     logoutRequested = Signal()
+    themeRequested = Signal(str)
+    loveRequested = Signal()
 
     def __init__(self, host: ToolHost, registry: ToolRegistry, settings: JsonSettingsStore, parent=None) -> None:
         super().__init__(parent)
@@ -45,12 +80,28 @@ class SettingsPage(QScrollArea):
         row.addWidget(logout)
         account.body.addLayout(row)
 
+        appearance = Card(padding=20, spacing=12)
+        appearance.body.addWidget(label("APPARENCE", "overline"))
+        self.theme_choice = SegmentedControl([("Système", "monitor"), ("Sombre", "moon"), ("Clair", "sun")])
+        current = settings.get(THEME_KEY, ThemeMode.SYSTEM)
+        index = next((i for i, mode in enumerate(THEME_CHOICES) if mode == current), 0)
+        self.theme_choice.set_current_index(index)
+        self.theme_choice.currentChanged.connect(lambda i: self.themeRequested.emit(THEME_CHOICES[i].value))
+        theme_texts = QVBoxLayout()
+        theme_texts.setSpacing(2)
+        theme_texts.addWidget(label("Thème", "heading"))
+        theme_texts.addWidget(label("« Système » suit le mode sombre ou clair de ton ordinateur.", "faint", wrap=True))
+        theme_row = QHBoxLayout()
+        theme_row.addLayout(theme_texts, 1)
+        theme_row.addWidget(self.theme_choice)
+        appearance.body.addLayout(theme_row)
+
         notifications = Card(padding=20, spacing=12)
         notifications.body.addWidget(label("NOTIFICATIONS", "overline"))
         notifications.body.addWidget(
             label(
-                "Annonces de l'équipe, événements du calendrier, avancées de la R&D : chaque nouveau message "
-                "s'affiche dans Syncron et rejoint ta messagerie.",
+                "Annonces de l'équipe, événements du calendrier, changements de ton compte : chaque nouveau "
+                "message s'affiche dans Syncron et rejoint ta messagerie.",
                 "muted",
                 wrap=True,
             )
@@ -131,13 +182,16 @@ class SettingsPage(QScrollArea):
                 wrap=True,
             )
         )
+        self.heart = HiddenHeart()
+        self.heart.clicked.connect(self.loveRequested)
+        about.body.addWidget(self.heart, 0, Qt.AlignmentFlag.AlignRight)
 
         content = QWidget()
         content.setMaximumWidth(920)
         layout = QVBoxLayout(content)
         layout.setContentsMargins(24, 20, 24, 24)
         layout.setSpacing(16)
-        for card in (account, notifications, server, storage, tools, about):
+        for card in (account, appearance, notifications, server, storage, tools, about):
             layout.addWidget(card)
         layout.addStretch(1)
         wrapper = QWidget()

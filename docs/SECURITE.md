@@ -1,4 +1,4 @@
-# Audit de sécurité — Syncron 4.3
+# Audit de sécurité — Syncron 4.3, mis à jour en 4.5
 
 Revue du serveur (FastAPI, PostgreSQL), du client (PySide6), du déploiement (Docker, Caddy) et de la mise à jour automatique. Chaque point corrigé est couvert par un test (`tests/server/test_security.py`, `tests/client/test_units.py`, `tests/client/test_systems_ui.py`).
 
@@ -10,9 +10,16 @@ Revue du serveur (FastAPI, PostgreSQL), du client (PySide6), du déploiement (Do
 | 2 | Moyenne | **Client connecté en HTTP** : une adresse `http://` vers un serveur distant était acceptée (Paramètres, `syncron.json`, variable d'environnement). Les jetons circulaient alors en clair. | HTTPS obligatoire ; HTTP accepté seulement vers cette machine (`127.0.0.1`, `localhost`) pour le développement. |
 | 3 | Moyenne | **Pas de limite de débit sur la connexion** : essais en rafale possibles sur `/auth/token`, `/auth/refresh` et `/auth/discord/*`. | 30 requêtes par minute et par adresse IP (`SYNCRON_AUTH_RATE_LIMIT`), réponse 429 avec `Retry-After`. |
 | 4 | Faible | **Texte des membres interprété comme du HTML** : un titre d'annonce, d'événement ou d'objet contenant `<b>`, `<a href>` ou `<img>` était mis en forme par Qt (liens trompeurs, mise en page cassée). Même chose dans le rapport d'import JSON. | Tous les textes s'affichent tels quels (`PlainText`), y compris dans les boîtes de confirmation ; le rapport d'import échappe les identifiants et les messages. |
-| 5 | Faible | **Taille des requêtes** limitée seulement par Caddy : une API exposée sans Caddy acceptait des corps JSON énormes (import). | Limite dans l'application aussi : 5 Mo (`SYNCRON_MAX_REQUEST_BYTES`), réponse 413. |
+| 5 | Faible | **Taille des requêtes** limitée seulement par Caddy : une API exposée sans Caddy acceptait des corps JSON énormes (import). | Limite dans l'application aussi : 5 Mo, portée à 10 Mo en 4.5 pour les images (`SYNCRON_MAX_REQUEST_BYTES`), réponse 413. |
 | 6 | Faible | **Image envoyée pour un objet inexistant** : le fichier était écrit sur le disque avant la vérification, et l'identifiant n'était pas contrôlé. | Identifiant et existence vérifiés avant toute écriture. |
 | 7 | Faible | **Mise à jour automatique** : l'archive pouvait venir de n'importe quel hôte indiqué par la Release, sans limite de taille, et l'extraction faisait confiance aux chemins du zip. | Téléchargements uniquement depuis GitHub en HTTPS (redirections comprises), 400 Mo au plus, 1 Go une fois extrait, chemins vérifiés un par un avant extraction. |
+
+## Hébergement d'images (4.5)
+
+- **Contenu** : chaque image est décodée puis réencodée par le serveur (PNG, JPEG ou GIF animé) ; rien d'autre que les pixels n'est gardé (EXIF, position GPS, données cachées dans le fichier). Fichier qui n'est pas une image : refusé. Dimensions vérifiées avant décodage (4096 × 4096), animation limitée (300 images, 64 Mpx au total).
+- **Adresse** : `/media/images/<jeton>` avec 12 octets aléatoires (`secrets.token_urlsafe`) : impossible de deviner ou d'énumérer les images. Seuls les membres connectés voient la galerie ; un lien partagé, lui, est public par nature (c'est le but).
+- **Abus** : 8 Mo par image, 200 images par membre, 2 Go au total (réglables), journal de chaque envoi, renommage et suppression. L'équipe qui gère « Images » peut supprimer n'importe quelle image ; un membre, seulement les siennes.
+- **Serveur** : servies en statique avec le bon type et `X-Content-Type-Options: nosniff` (Caddy) ; extensions limitées à `.png`, `.jpg`, `.gif`.
 
 ## Vérifié, sans problème
 

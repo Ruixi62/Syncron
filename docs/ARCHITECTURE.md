@@ -1,4 +1,4 @@
-# Syncron 4.4 — Architecture
+# Syncron 4.5 — Architecture
 
 Syncron est le logiciel interne d'un pays de NationsGlory : un client de bureau réservé aux membres, connecté à une API hébergée.
 
@@ -25,6 +25,7 @@ Tout est découpé en **systèmes**. Chacun a ses tables, ses routes de lecture,
 | `research` | `/api/v1/research` | `/api/v1/admin/research/…` | R&D |
 | `calendar` | `/api/v1/calendar/events` | `/api/v1/admin/calendar/…` | Calendrier |
 | `messages` | `/api/v1/inbox` | `/api/v1/admin/messages` | Messagerie |
+| `images` | `/api/v1/images` (envoi par tout membre) | suppression de toute image | Images |
 | — | — | — | Convertisseur (local), Alertes (en travaux) |
 
 Un éditeur gère les systèmes listés dans `users.permissions` ; un administrateur les gère tous, plus les comptes (`accounts` dans le journal).
@@ -83,6 +84,14 @@ erDiagram
         int recurrence_days "jours de la semaine (masque)"
         date recurrence_until
         json skipped_dates "dates annulées"
+    }
+    users ||--o{ hosted_images : "envoie"
+    hosted_images {
+        uuid id PK
+        string path UK "images/<jeton aléatoire>.png|jpg|gif"
+        string title
+        string content_type "image/png | image/jpeg | image/gif"
+        int size_bytes
     }
     messages {
         bigint id PK
@@ -146,8 +155,10 @@ Tout système publie une nouvelle avec `messaging.post_message(session, system=�
 | GET, POST, PUT, DELETE | `/api/v1/admin/calendar/events[/{id}]` (fiches, une ligne par série) | Calendrier |
 | POST | `/api/v1/admin/calendar/events/{id}/skip` (annuler ou rétablir une date) | Calendrier |
 | GET, POST, DELETE | `/api/v1/admin/messages[/{id}]`, `/recipients` | Messagerie |
+| GET, POST | `/api/v1/images` (galerie, `?mine=true`, envoi multipart) | connecté |
+| PATCH, DELETE | `/api/v1/images/{id}` | auteur de l'image, ou Images |
 | GET, PATCH | `/api/v1/admin/users` | admin |
-| GET | `/media/…` | public, cache immuable |
+| GET | `/media/…` (dont `/media/images/<jeton>` : images partagées) | public, cache immuable |
 
 ## 3. Client
 
@@ -156,7 +167,7 @@ Launcher ──▶ LoginWindow ──(Discord / reprise / hors ligne)──▶ S
    │                                                            │
    ├─ ApiClient (httpx, renouvellement des jetons)              ├─ Accueil (cartes des outils) · Paramètres
    ├─ TokenStore (coffre du système, ou fichier en repli)       ├─ Messagerie            (barre latérale, en haut)
-   ├─ CatalogStore (cache disque, ETag, images)                 ├─ Craft · R&D · Calendrier · Convertisseur · Alertes (en travaux)
+   ├─ CatalogStore (cache disque, ETag, images)                 ├─ Craft · R&D · Calendrier · Convertisseur · Images · Alertes (en travaux)
    ├─ NotificationCenter (cloche, bulles, bureau)               └─ Administration        (Gestion, éditeurs+)
    ├─ Session (utilisateur, rôle, systèmes confiés, en ligne)
    └─ TaskRunner (QThreadPool → retour dans le thread de l'interface)
@@ -164,6 +175,7 @@ Launcher ──▶ LoginWindow ──(Discord / reprise / hors ligne)──▶ S
 
 - **Aucun appel réseau dans le thread de l'interface** : `TaskRunner` exécute les appels dans le pool de Qt.
 - **Notifications** : `NotificationCenter` interroge `/inbox/summary` toutes les 60 secondes. Un message plus récent que le dernier vu (mémorisé par compte) déclenche une bulle, la pastille de la cloche et, si la fenêtre est en arrière-plan, une notification du bureau (désactivable dans Paramètres).
+- **Thème** : `ui/theme.py` définit une palette sombre et une claire ; `COLORS` est un seul objet dont les valeurs changent (`use_palette`). Changer de thème (Paramètres › Apparence, ou le système en mode « Système ») réapplique la feuille de style et reconstruit les fenêtres.
 - **Hors ligne** : si le serveur est injoignable, l'application s'ouvre en lecture seule sur les dernières données reçues (catalogue, R&D, calendrier), avec une pastille « Hors ligne · Réessayer ».
 - **Version minimale** : `/meta.min_client_version` bloque les clients trop anciens.
 

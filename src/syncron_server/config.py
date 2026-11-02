@@ -38,7 +38,12 @@ class Settings(BaseSettings):
     nation_name: str = Field("", max_length=60, description="Nom du pays affiché dans le client")
     dev_login: bool = Field(False, description="Connexion sans Discord, réservée au développement local")
     auth_rate_limit: int = Field(30, ge=0, description="Requêtes de connexion par minute et par adresse (0 = illimité)")
-    max_request_bytes: int = Field(5 * 1024 * 1024, ge=64 * 1024)
+    max_request_bytes: int = Field(10 * 1024 * 1024, ge=64 * 1024)
+    max_hosted_image_bytes: int = Field(8 * 1024 * 1024, ge=64 * 1024, description="Image hébergée : poids maximal")
+    hosted_images_per_user: int = Field(200, ge=0, description="Images hébergées par membre (0 = illimité)")
+    hosted_images_total_bytes: int = Field(
+        2 * 1024 * 1024 * 1024, ge=0, description="Espace total des images hébergées (0 = illimité)"
+    )
 
     @model_validator(mode="after")
     def _check(self) -> Settings:

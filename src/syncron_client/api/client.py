@@ -113,6 +113,26 @@ class ApiClient:
     def download(self, url: str) -> bytes:
         return self._request("GET", url, auth=False).content
 
+    def absolute_url(self, url: str) -> str:
+        """Lien complet d'un fichier du serveur (« https://…/media/images/… »), à partager."""
+        return url if url.startswith(("http://", "https://")) else self.base_url + url
+
+    # -- images ------------------------------------------------------------------------------
+
+    def images(self, mine: bool = False) -> dict[str, Any]:
+        return self._json("GET", "/api/v1/images", params={"mine": "true"} if mine else None)
+
+    def upload_image(self, filename: str, content: bytes, title: str | None = None) -> dict[str, Any]:
+        files = {"file": (filename, content, "application/octet-stream")}
+        data = {"title": title} if title else None
+        return self._json("POST", "/api/v1/images", files=files, data=data, expected=(201,))
+
+    def rename_image(self, image_id: str, title: str) -> dict[str, Any]:
+        return self._json("PATCH", f"/api/v1/images/{image_id}", json={"title": title})
+
+    def delete_hosted_image(self, image_id: str) -> None:
+        self._request("DELETE", f"/api/v1/images/{image_id}")
+
     # -- administration générale -------------------------------------------------------
 
     def overview(self) -> dict[str, Any]:

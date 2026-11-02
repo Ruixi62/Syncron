@@ -2,7 +2,7 @@
 
 Syncron est le logiciel interne du pays : il est réservé à ses membres. Ce guide va d'un serveur vide jusqu'au client distribué aux membres. Compter environ 30 minutes.
 
-> **Tu mets à jour un serveur existant ?** Lis directement la [section 8](#8-passer-à-la-44).
+> **Tu mets à jour un serveur existant ?** Lis directement la [section 8](#8-passer-à-la-45).
 
 ## 1. Prérequis
 
@@ -82,12 +82,30 @@ Dans **Comptes**, passe un membre en Éditeur, puis choisis ses systèmes dans l
 - **Serveur** : `git pull && docker compose up -d --build`. Les migrations s'appliquent toutes seules.
 - **Client** : publie le nouveau build. Pour obliger les membres à mettre à jour, augmente `SYNCRON_MIN_CLIENT_VERSION` dans `.env`, puis lance `docker compose up -d`. Les anciens clients affichent alors « Mise à jour requise ».
 
-## 8. Passer à la 4.4
+## 8. Passer à la 4.5
+
+La migration `0005` crée la table des images hébergées ; rien d'autre ne change dans la base.
+
+1. Sur le serveur : `git pull && docker compose up -d --build`. **Recrée bien le conteneur Caddy** (`docker compose up -d` suffit) : la taille maximale des requêtes passe à 10 Mo pour l'envoi d'images.
+2. Publie le client : pousse sur `main`, le workflow crée la Release `v4.5.0` et les clients se mettent à jour seuls. Pas besoin de changer `SYNCRON_MIN_CLIENT_VERSION` : un client 4.4 reste compatible (il n'a simplement pas l'outil Images).
+
+Nouveaux réglages facultatifs (`.env`) :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `SYNCRON_MAX_HOSTED_IMAGE_BYTES` | 8 Mo | poids maximal d'une image envoyée |
+| `SYNCRON_HOSTED_IMAGES_PER_USER` | 200 | images par membre (0 = illimité) |
+| `SYNCRON_HOSTED_IMAGES_TOTAL_BYTES` | 2 Go | espace total réservé aux images (0 = illimité) |
+| `SYNCRON_MAX_REQUEST_BYTES` | 10 Mo | taille maximale d'une requête (doit dépasser l'image la plus lourde) |
+
+Les images sont dans le volume média (`media/images/`), déjà sauvegardé par `backup.sh`.
+
+### Passer à la 4.4
 
 La migration `0004` retire la « recherche en cours » de la R&D, réécrit en texte les récompenses qui citaient un objet (« 64 × Lingot de fer ») et décoche les conditions chiffrées cochées avant d'avoir atteint leur quantité. Le reste est conservé.
 
 1. Sur le serveur : dans `.env`, mets `SYNCRON_MIN_CLIENT_VERSION=4.4.0`, puis `git pull && docker compose up -d --build`.
-2. Publie le client : pousse sur `main` (la version 4.4.0 est nouvelle, le workflow crée la Release `v4.4.0`). Les clients se mettent à jour tout seuls au prochain lancement.
+2. Publie le client : pousse sur `main` (la version est nouvelle, le workflow crée la Release). Les clients se mettent à jour tout seuls au prochain lancement.
 
 Un client 4.3 enverrait encore la « recherche en cours » et des récompenses avec objet, que l'API 4.4 ignore ou refuse : d'où la version minimale.
 

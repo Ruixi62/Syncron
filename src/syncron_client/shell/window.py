@@ -21,6 +21,7 @@ from syncron_client.settings import JsonSettingsStore
 from syncron_client.shell.command_palette import CommandPalette
 from syncron_client.shell.home_page import HomePage
 from syncron_client.shell.host import ShellHost
+from syncron_client.shell.love_page import LOVE_ID, LovePage
 from syncron_client.shell.settings_page import DESKTOP_NOTIFICATIONS_KEY, SettingsPage
 from syncron_client.shell.sidebar import HOME_ID, SETTINGS_ID, Sidebar
 from syncron_client.shell.toast import Toast
@@ -42,6 +43,7 @@ def set_taskbar_badge(count: int) -> None:
 
 class ShellWindow(QMainWindow):
     logoutRequested = Signal()
+    themeRequested = Signal(str)
 
     def __init__(self, registry: ToolRegistry, host: ShellHost, settings: JsonSettingsStore, parent=None):
         super().__init__(parent)
@@ -95,6 +97,8 @@ class ShellWindow(QMainWindow):
         host.openRequested.connect(lambda tool_id, key: self.open_in_tool(tool_id, key or None))
         self._sidebar.account.logoutRequested.connect(self.logoutRequested)
         self._settings_page.logoutRequested.connect(self.logoutRequested)
+        self._settings_page.themeRequested.connect(self.themeRequested)
+        self._settings_page.loveRequested.connect(lambda: self.show_page(LOVE_ID))
         self._top_bar.retryRequested.connect(self.retry_connection)
         self._top_bar.notificationsRequested.connect(lambda: self.show_page(MAILBOX_ID))
         host.notifications.unreadChanged.connect(self._top_bar.set_unread)
@@ -116,6 +120,10 @@ class ShellWindow(QMainWindow):
     def show_page(self, page_id: str) -> None:
         if page_id == self._current:
             return
+        if page_id == LOVE_ID and LOVE_ID not in self._pages:
+            love = LovePage()
+            love.backRequested.connect(lambda: self.show_page(SETTINGS_ID))
+            self._add_page(LOVE_ID, love)
         if page_id not in self._pages and page_id not in self._registry:
             page_id = HOME_ID
         if self._current in self._registry:
@@ -129,10 +137,12 @@ class ShellWindow(QMainWindow):
         elif page_id == HOME_ID:
             self._home.refresh()
             self._top_bar.set_page("Accueil", "Les outils du pays")
+        elif page_id == LOVE_ID:
+            self._top_bar.set_page("♥", "")
         else:
             self._settings_page.refresh()
-            self._top_bar.set_page("Paramètres", "Compte, serveur, stockage local, à propos")
-        self._top_bar.set_search_visible(page_id != HOME_ID)
+            self._top_bar.set_page("Paramètres", "Compte, apparence, serveur, stockage local, à propos")
+        self._top_bar.set_search_visible(page_id not in (HOME_ID, LOVE_ID))
         self._stack.setCurrentWidget(self._pages[page_id])
         self._sidebar.set_current(page_id)
         self._current = page_id
@@ -279,7 +289,7 @@ class ShellWindow(QMainWindow):
             self._tray.hide()
         set_taskbar_badge(0)
         self._settings.set("window_geometry", bytes(self.saveGeometry().toHex()).decode("ascii"))
-        self._settings.set("last_page", self._current or HOME_ID)
+        self._settings.set("last_page", self._current if self._current not in (None, LOVE_ID) else HOME_ID)
         try:
             self._settings.save()
         except OSError:

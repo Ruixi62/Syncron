@@ -1,4 +1,4 @@
-# Syncron 4.4
+# Syncron 4.5
 
 Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargeable** (Windows, Linux, macOS) réservé aux membres du pays, connecté à une **API hébergée**. La connexion se fait avec **Discord** (limitée au serveur Discord du pays), et une **administration découpée par système** permet à l'équipe de tout tenir à jour.
 
@@ -9,6 +9,7 @@ Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargea
 | **R&D** | tous | les cinq domaines (global, militaire, ressources, industrie, technologie), leurs paliers, conditions, récompenses et l'avancement du pays (380 / 1 000…), paliers validés dans l'ordre |
 | **Calendrier** | tous | réunions, guerres, événements, économie ; vue du mois ou liste ; événements récurrents |
 | **Convertisseur** | tous | stacks (64), lignes (576), coffres (1 728), doubles coffres (3 456) : division euclidienne ou unité unique |
+| **Images** | tous | héberger une image (bouton, glisser-déposer, Ctrl+V) et copier son lien public à partager sur Discord |
 | **Alertes** | tous | page en travaux : arrivera avec l'intégration de l'API NationsGlory |
 | **Administration** | éditeurs, admins | une section par système, plus les comptes et le journal |
 
@@ -28,7 +29,7 @@ Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargea
 | `src/syncron_server/` | API : FastAPI, SQLAlchemy 2 async, Alembic, Discord OAuth2, JWT, un routeur par système |
 | `src/syncron_client/` | Client de bureau : connexion, session, notifications, plateforme d'outils, un paquet par outil |
 | `deploy/` | Dockerfile, docker-compose (PostgreSQL + API + Caddy), `.env.example`, sauvegardes, catalogue d'exemple |
-| `tests/` | 176 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
+| `tests/` | 183 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
 | `docs/` | `DEPLOIEMENT.md` (mise en ligne, mises à jour), `ARCHITECTURE.md` (systèmes, ajouter un outil), `SECURITE.md` (audit) |
 
 ## Démarrage rapide (développement)
@@ -52,6 +53,14 @@ ruff check . && ruff format --check .
 ## Production
 
 Voir [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) : application Discord, `docker compose up -d --build`, build du client avec `python build_client.py --server-url https://…`, rôles et systèmes confiés, mises à jour, sauvegardes.
+
+## Nouveautés de la 4.5
+
+- **Interface épurée**, même identité turquoise : fonds unis, cartes sans contour, boutons et champs sans bordure jusqu'au survol.
+- **Thème clair et thème sombre** : Paramètres › Apparence (Système, Sombre, Clair), appliqué tout de suite.
+- **Images** : nouvel outil d'hébergement. Chaque membre envoie ses images (bouton, glisser-déposer, Ctrl+V d'une capture), le lien public est copié aussitôt ; galerie du pays, « Les miennes », recherche, renommage, suppression. Images réencodées (métadonnées et position GPS retirées), GIF animés conservés, adresse impossible à deviner, quota par membre et espace total plafonné.
+- **R&D** : une condition à compteur tient sur une ligne, image de l'objet, texte de la condition, compteur à droite ; plus de barre de progression.
+- **Craft** : les images des objets ne sont plus aplaties dans la liste (proportions conservées).
 
 ## Nouveautés de la 4.4
 

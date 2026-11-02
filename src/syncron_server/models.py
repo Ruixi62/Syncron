@@ -378,3 +378,30 @@ class MessageReceipt(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# -- Images ---------------------------------------------------------------------------------
+
+
+class HostedImage(Base):
+    """Image envoyée par un membre, servie publiquement à une adresse impossible à deviner
+    (`/media/images/<jeton>.<ext>`) pour être partagée, par exemple sur Discord."""
+
+    __tablename__ = "hosted_images"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    path: Mapped[str] = mapped_column(String(80), unique=True)
+    title: Mapped[str] = mapped_column(String(120), default="")
+    content_type: Mapped[str] = mapped_column(String(32))
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    uploader: Mapped[User | None] = relationship(lazy="selectin")
+
+    __table_args__ = (
+        CheckConstraint("content_type in ('image/png', 'image/jpeg', 'image/gif')", name="content_type"),
+        CheckConstraint("width >= 1 and height >= 1 and size_bytes >= 1", name="dimensions"),
+    )

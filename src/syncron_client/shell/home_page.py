@@ -80,7 +80,7 @@ class HomePage(QScrollArea):
         hero = Card(padding=28, spacing=0)
         hero.setStyleSheet(
             "QFrame[card='true'] { background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
-            f" stop:0 #10241f, stop:0.55 {COLORS.surface}, stop:1 #0f1d2a); }}"
+            f" stop:0 {COLORS.hero_start}, stop:0.55 {COLORS.surface}, stop:1 {COLORS.hero_end}); }}"
         )
         logo = QLabel()
         logo.setFixedSize(76, 76)

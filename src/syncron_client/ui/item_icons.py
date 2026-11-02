@@ -2,6 +2,7 @@
 
 - Cache par (type, id, taille).
 - Pixel-art agrandi sans flou (16×16 / 32×32 Minecraft), lissage en réduction.
+- Toujours un carré : l'image est centrée à ses proportions (jamais aplatie dans les listes).
 - Facteur d'échelle Windows pris en compte (125 %, 150 %…).
 """
 
@@ -74,13 +75,24 @@ def _load(path: Path | None, size: int) -> QPixmap | None:
     source = QPixmap(str(path))
     if source.isNull():
         return None
+    return fit_square(source, size)
+
+
+def fit_square(source: QPixmap, size: int) -> QPixmap:
+    """Image réduite (ou agrandie sans flou pour le pixel-art) dans un carré transparent, proportions gardées :
+    une image en largeur ou en hauteur n'est jamais aplatie, quel que soit l'endroit où on la dessine."""
     ratio = _ratio()
     target = round(size * ratio)
     upscale = max(source.width(), source.height()) < target
     mode = Qt.TransformationMode.FastTransformation if upscale else Qt.TransformationMode.SmoothTransformation
     scaled = source.scaled(target, target, Qt.AspectRatioMode.KeepAspectRatio, mode)
-    scaled.setDevicePixelRatio(ratio)
-    return scaled
+    square = QPixmap(target, target)
+    square.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(square)
+    painter.drawPixmap((target - scaled.width()) // 2, (target - scaled.height()) // 2, scaled)
+    painter.end()
+    square.setDevicePixelRatio(ratio)
+    return square
 
 
 def _hue_color(seed: str, is_raw: bool) -> QColor:

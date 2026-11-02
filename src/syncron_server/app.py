@@ -16,7 +16,7 @@ from syncron_server.config import Settings
 from syncron_server.db import Database
 from syncron_server.discord import DiscordOAuth, DiscordProvider
 from syncron_server.protection import AuthRateLimit, BodySizeLimit
-from syncron_server.routers import admin, auth, calendar, catalog, craft_admin, inbox, research
+from syncron_server.routers import admin, auth, calendar, catalog, craft_admin, images, inbox, research
 from syncron_server.schemas import IssueOut
 
 
@@ -70,6 +70,7 @@ def create_app(
     for module in (research, calendar, inbox):
         app.include_router(module.router)
         app.include_router(module.admin_router)
+    app.include_router(images.router)
     settings.media_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/media", StaticFiles(directory=settings.media_dir), name="media")
     return app

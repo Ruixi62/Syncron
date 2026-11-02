@@ -426,3 +426,32 @@ class SentMessageOut(BaseModel):
     created_at: datetime
     recipients: int
     read: int
+
+
+# -- Images ---------------------------------------------------------------------------------
+
+
+class HostedImageOut(BaseModel):
+    id: uuid.UUID
+    url: str
+    title: str
+    content_type: str
+    width: int
+    height: int
+    size_bytes: int
+    uploader: str | None
+    mine: bool
+    can_delete: bool
+    created_at: datetime
+
+
+class HostedImagesOut(BaseModel):
+    images: list[HostedImageOut]
+    mine_count: int
+    per_user_limit: int
+    max_bytes: int
+
+
+class HostedImagePatch(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    title: str = Field(max_length=120)

@@ -92,7 +92,7 @@ async def database(settings):
         await connection.execute(
             text(
                 "truncate audit_log, recipe_ingredients, item_requirements, items, stations, skills, "
-                "login_codes, refresh_tokens, users, message_receipts, messages, calendar_events, "
+                "login_codes, refresh_tokens, users, message_receipts, messages, calendar_events, hosted_images, "
                 "research_lines, research_tiers, research_categories restart identity cascade"
             )
         )

@@ -23,6 +23,7 @@ CRAFT = "craft"
 RESEARCH = "research"
 CALENDAR = "calendar"
 MESSAGES = "messages"
+IMAGES = "images"
 ACCOUNTS = "accounts"
 
 SYSTEMS: dict[str, str] = {
@@ -30,6 +31,7 @@ SYSTEMS: dict[str, str] = {
     RESEARCH: "R&D",
     CALENDAR: "Calendrier",
     MESSAGES: "Messagerie",
+    IMAGES: "Images",
 }
 LABELS: dict[str, str] = {**SYSTEMS, ACCOUNTS: "Comptes"}
 

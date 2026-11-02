@@ -1,15 +1,21 @@
-"""Design system : jetons de couleur, typographie, feuille de style globale.
+"""Design system : jetons de couleur (sombre et clair), typographie, feuille de style globale.
 
-Tous les écrans (plateforme et outils) n'utilisent que ces jetons :
-changer l'identité visuelle = modifier ce fichier.
+Tous les écrans (plateforme et outils) n'utilisent que ces jetons : changer l'identité
+visuelle = modifier ce fichier. `COLORS` est un seul objet dont les valeurs changent avec
+le thème (`use_palette`) ; les écrans le relisent quand la fenêtre est reconstruite.
+
+Style « épuré » : fonds unis, cartes sans contour (léger liseré en clair), boutons et
+champs sans bordure tant qu'on ne les survole pas, un seul accent turquoise.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
+from enum import StrEnum
 from pathlib import Path
 
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QGuiApplication, QPalette
 from PySide6.QtWidgets import QApplication
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
@@ -17,17 +23,30 @@ FONTS_DIR = ASSETS_DIR / "fonts"
 CHECK_IMAGE = (ASSETS_DIR / "check.svg").as_posix()
 FONT_FAMILY = "Inter"
 FALLBACK_FAMILIES = ["Segoe UI Variable Text", "Segoe UI", "Ubuntu", "Cantarell", "Helvetica Neue", "Arial"]
+THEME_KEY = "theme"
 
 
-@dataclass(frozen=True, slots=True)
+class ThemeMode(StrEnum):
+    SYSTEM = "system"
+    DARK = "dark"
+    LIGHT = "light"
+
+    @property
+    def label(self) -> str:
+        return {"system": "Système", "dark": "Sombre", "light": "Clair"}[self.value]
+
+
+@dataclass(slots=True)
 class Palette:
+    dark: bool = True
     bg: str = "#0b0e14"
-    sidebar: str = "#0e1219"
+    sidebar: str = "#0d1118"
     surface: str = "#131823"
-    surface_alt: str = "#181f2d"
-    surface_hover: str = "#1d2536"
-    border: str = "#222a3a"
+    surface_alt: str = "#1a2130"
+    surface_hover: str = "#212a3c"
+    border: str = "#1f2736"
     border_strong: str = "#2e384c"
+    card_border: str = "transparent"
     text: str = "#e8ebf2"
     text_muted: str = "#8d96aa"
     text_faint: str = "#5d6679"
@@ -46,20 +65,99 @@ class Palette:
     danger_soft: str = "rgba(242, 85, 90, 0.12)"
     violet: str = "#a78bfa"
     violet_soft: str = "rgba(167, 139, 250, 0.12)"
+    hero_start: str = "#0f2621"
+    hero_end: str = "#0f1b29"
+    brand_start: str = "#0f2a25"
+    brand_mid: str = "#0d1520"
+    brand_end: str = "#0b1a2a"
+    shadow: str = "rgba(0, 0, 0, 0.35)"
 
 
-COLORS = Palette()
+DARK = Palette()
+LIGHT = Palette(
+    dark=False,
+    bg="#eef1f5",
+    sidebar="#e7ebf0",
+    surface="#ffffff",
+    surface_alt="#f4f6f9",
+    surface_hover="#e7ebf0",
+    border="#e3e7ec",
+    border_strong="#cfd5de",
+    card_border="#e6e9ee",
+    text="#161b26",
+    text_muted="#566074",
+    text_faint="#8790a1",
+    accent="#0f9e88",
+    accent_hover="#12b39a",
+    accent_pressed="#0b8774",
+    accent_text="#ffffff",
+    accent_soft="rgba(15, 158, 136, 0.11)",
+    info="#2f6fe4",
+    info_soft="rgba(47, 111, 228, 0.10)",
+    success="#3b8f1d",
+    success_soft="rgba(59, 143, 29, 0.11)",
+    warning="#b86e00",
+    warning_soft="rgba(214, 135, 0, 0.12)",
+    danger="#d63a40",
+    danger_soft="rgba(214, 58, 64, 0.10)",
+    violet="#7552d9",
+    violet_soft="rgba(117, 82, 217, 0.10)",
+    hero_start="#dff5f0",
+    hero_end="#e6eefb",
+    brand_start="#d9f2ec",
+    brand_mid="#eef3f8",
+    brand_end="#e1ebf8",
+    shadow="rgba(16, 24, 40, 0.08)",
+)
 
-# Variantes de pastilles (Chip) : (texte, fond)
-TONES: dict[str, tuple[str, str]] = {
-    "neutral": (COLORS.text_muted, COLORS.surface_alt),
-    "accent": (COLORS.accent, COLORS.accent_soft),
-    "info": (COLORS.info, COLORS.info_soft),
-    "success": (COLORS.success, COLORS.success_soft),
-    "warning": (COLORS.warning, COLORS.warning_soft),
-    "danger": (COLORS.danger, COLORS.danger_soft),
-    "violet": (COLORS.violet, COLORS.violet_soft),
-}
+COLORS = replace(DARK)
+
+# Variantes de pastilles (Chip) : (texte, fond) ; recalculées à chaque changement de thème.
+TONES: dict[str, tuple[str, str]] = {}
+
+
+def _refresh_tones() -> None:
+    c = COLORS
+    TONES.update(
+        neutral=(c.text_muted, c.surface_alt),
+        accent=(c.accent, c.accent_soft),
+        info=(c.info, c.info_soft),
+        success=(c.success, c.success_soft),
+        warning=(c.warning, c.warning_soft),
+        danger=(c.danger, c.danger_soft),
+        violet=(c.violet, c.violet_soft),
+    )
+
+
+_refresh_tones()
+
+
+def system_prefers_dark() -> bool:
+    app = QGuiApplication.instance()
+    if app is None:
+        return True
+    return app.styleHints().colorScheme() != Qt.ColorScheme.Light
+
+
+def resolve_mode(mode: str | ThemeMode | None) -> ThemeMode:
+    """Sombre ou clair : « Système » suit le réglage de Windows / macOS / du bureau."""
+    try:
+        chosen = ThemeMode(mode or ThemeMode.SYSTEM)
+    except ValueError:
+        chosen = ThemeMode.SYSTEM
+    if chosen is ThemeMode.SYSTEM:
+        return ThemeMode.DARK if system_prefers_dark() else ThemeMode.LIGHT
+    return chosen
+
+
+def use_palette(mode: str | ThemeMode | None) -> ThemeMode:
+    """Remplace les valeurs de COLORS (même objet partout) par celles du thème choisi."""
+    resolved = resolve_mode(mode)
+    source = DARK if resolved is ThemeMode.DARK else LIGHT
+    for field in fields(Palette):
+        setattr(COLORS, field.name, getattr(source, field.name))
+    _refresh_tones()
+    return resolved
 
 
 def load_fonts() -> str:
@@ -74,8 +172,20 @@ def load_fonts() -> str:
     return next((family for family in FALLBACK_FAMILIES if family in available), QFont().family())
 
 
-def apply_theme(app: QApplication) -> None:
-    family = load_fonts()
+_applied: dict[int, ThemeMode] = {}
+_families: list[str] = []
+
+
+def apply_theme(app: QApplication, mode: str | ThemeMode | None = ThemeMode.DARK) -> ThemeMode:
+    """Applique le thème à toute l'application ; renvoie le thème effectif (sombre ou clair).
+    Rien n'est refait si ce thème est déjà en place (la feuille de style se recalcule sur tous les widgets)."""
+    resolved = use_palette(mode)
+    if _applied.get(id(app)) is resolved:
+        return resolved
+    _applied[id(app)] = resolved
+    if not _families:
+        _families.append(load_fonts())
+    family = _families[0]
     font = QFont(family)
     font.setPixelSize(13)
     font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
@@ -83,6 +193,7 @@ def apply_theme(app: QApplication) -> None:
     app.setStyle("Fusion")
     app.setPalette(_palette())
     app.setStyleSheet(stylesheet(family))
+    return resolved
 
 
 def _palette() -> QPalette:
@@ -120,8 +231,8 @@ QToolTip {{ background: {c.surface_alt}; color: {c.text}; border: 1px solid {c.b
            border-radius: 6px; padding: 6px 8px; }}
 
 /* ---------- Typographie ---------- */
-QLabel[role="display"] {{ font-size: 26px; font-weight: 700; }}
-QLabel[role="title"] {{ font-size: 20px; font-weight: 600; }}
+QLabel[role="display"] {{ font-size: 28px; font-weight: 700; }}
+QLabel[role="title"] {{ font-size: 21px; font-weight: 650; }}
 QLabel[role="heading"] {{ font-size: 15px; font-weight: 600; }}
 QLabel[role="overline"] {{ color: {c.text_faint}; font-size: 11px; font-weight: 600; }}
 QLabel[role="muted"] {{ color: {c.text_muted}; }}
@@ -129,11 +240,11 @@ QLabel[role="faint"] {{ color: {c.text_faint}; font-size: 12px; }}
 QLabel[role="stat"] {{ font-size: 22px; font-weight: 700; }}
 
 /* ---------- Surfaces ---------- */
-QFrame#Sidebar {{ background: {c.sidebar}; border-right: 1px solid {c.border}; }}
-QFrame#TopBar {{ background: {c.bg}; border-bottom: 1px solid {c.border}; }}
-QFrame[card="true"] {{ background: {c.surface}; border: 1px solid {c.border}; border-radius: 14px; }}
-QFrame[card="flat"] {{ background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 12px; }}
-QFrame#IconTile {{ background: {c.surface_alt}; border: 1px solid {c.border_strong}; border-radius: 14px; }}
+QFrame#Sidebar {{ background: {c.sidebar}; border: none; }}
+QFrame#TopBar {{ background: {c.bg}; border: none; }}
+QFrame[card="true"] {{ background: {c.surface}; border: 1px solid {c.card_border}; border-radius: 16px; }}
+QFrame[card="flat"] {{ background: {c.surface_alt}; border: 1px solid {c.card_border}; border-radius: 12px; }}
+QFrame#IconTile {{ background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 14px; }}
 QFrame#Banner[tone="danger"] {{ background: {c.danger_soft}; border: 1px solid {c.danger}; border-radius: 10px; }}
 QFrame#Banner[tone="warning"] {{ background: {c.warning_soft}; border: 1px solid {c.warning}; border-radius: 10px; }}
 QFrame#Divider {{ background: {c.border}; max-height: 1px; min-height: 1px; border: none; }}
@@ -144,25 +255,26 @@ QPushButton#NavButton {{
     text-align: left; padding: 9px 12px; border: none; border-radius: 9px;
     color: {c.text_muted}; font-weight: 500; background: transparent;
 }}
-QPushButton#NavButton:hover {{ background: {c.surface}; color: {c.text}; }}
+QPushButton#NavButton:hover {{ background: {c.surface_alt}; color: {c.text}; }}
 QPushButton#NavButton:checked {{ background: {c.accent_soft}; color: {c.accent}; font-weight: 600; }}
 QLabel#NavBadge {{ background: {c.danger}; color: white; border-radius: 8px; padding: 0 6px;
                    font-size: 11px; font-weight: 700; min-height: 16px; }}
 
 /* ---------- Boutons ---------- */
 QPushButton, QToolButton {{
-    background: {c.surface_alt}; border: 1px solid {c.border_strong}; border-radius: 9px;
+    background: {c.surface_alt}; border: 1px solid transparent; border-radius: 10px;
     padding: 7px 14px; font-weight: 500; color: {c.text};
 }}
-QPushButton:hover, QToolButton:hover {{ background: {c.surface_hover}; border-color: {c.text_faint}; }}
-QPushButton:pressed, QToolButton:pressed {{ background: {c.surface}; }}
-QPushButton:disabled, QToolButton:disabled {{ color: {c.text_faint}; border-color: {c.border};
-                                              background: {c.surface}; }}
+QPushButton:hover, QToolButton:hover {{ background: {c.surface_hover}; border-color: {c.border}; }}
+QPushButton:pressed, QToolButton:pressed {{ background: {c.surface_alt}; }}
+QPushButton:disabled, QToolButton:disabled {{ color: {c.text_faint}; border-color: transparent;
+                                              background: {c.surface_alt}; }}
 QPushButton[variant="primary"] {{ background: {c.accent}; color: {c.accent_text}; border: 1px solid {c.accent};
                                   font-weight: 600; }}
 QPushButton[variant="primary"]:hover {{ background: {c.accent_hover}; border-color: {c.accent_hover}; }}
 QPushButton[variant="primary"]:pressed {{ background: {c.accent_pressed}; }}
-QPushButton[variant="primary"]:disabled {{ background: {c.surface}; color: {c.text_faint}; border-color: {c.border}; }}
+QPushButton[variant="primary"]:disabled {{ background: {c.surface_alt}; color: {c.text_faint};
+                                           border-color: transparent; }}
 QPushButton[variant="ghost"], QToolButton[variant="ghost"] {{ background: transparent; border-color: transparent; }}
 QPushButton[variant="ghost"]:hover, QToolButton[variant="ghost"]:hover {{ background: {c.surface_alt};
                                                                           border-color: {c.border}; }}
@@ -172,21 +284,21 @@ QToolButton[variant="compact"]:hover {{ background: {c.surface_alt}; border-colo
 QToolButton[variant="icon"] {{ padding: 6px; border-radius: 8px; background: transparent; border-color: transparent; }}
 QToolButton[variant="icon"]:hover {{ background: {c.surface_alt}; border-color: {c.border}; }}
 QPushButton#SearchLauncher {{
-    text-align: left; color: {c.text_faint}; background: {c.surface}; border: 1px solid {c.border};
+    text-align: left; color: {c.text_faint}; background: {c.surface_alt}; border: 1px solid transparent;
     border-radius: 10px; padding: 7px 12px; min-width: 230px;
 }}
 QPushButton#SearchLauncher:hover {{ border-color: {c.border_strong}; color: {c.text_muted}; }}
 
 /* ---------- Contrôle segmenté ---------- */
-QFrame#Segmented {{ background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 10px; }}
+QFrame#Segmented {{ background: {c.surface_alt}; border: none; border-radius: 10px; }}
 QPushButton#Segment {{ background: transparent; border: none; border-radius: 7px; padding: 6px 12px;
                        color: {c.text_muted}; font-weight: 500; }}
 QPushButton#Segment:hover {{ color: {c.text}; }}
-QPushButton#Segment:checked {{ background: {c.surface_hover}; color: {c.text}; font-weight: 600; }}
+QPushButton#Segment:checked {{ background: {c.surface}; color: {c.text}; font-weight: 600; }}
 
 /* ---------- Champs ---------- */
 QLineEdit, QSpinBox, QComboBox, QDateEdit, QTimeEdit, QPlainTextEdit, QTextEdit {{
-    background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 9px;
+    background: {c.surface_alt}; border: 1px solid transparent; border-radius: 10px;
     padding: 7px 10px; selection-background-color: {c.accent}; selection-color: {c.accent_text};
 }}
 QPlainTextEdit, QTextEdit {{ padding: 6px 8px; }}
@@ -233,7 +345,7 @@ QTableView::item:selected, QTreeView::item:selected {{ background: {c.surface_ho
 QTableView::item:hover, QTreeView::item:hover {{ background: {c.surface_alt}; }}
 QHeaderView {{ background: transparent; }}
 QHeaderView::section {{
-    background: transparent; color: {c.text_faint}; border: none; border-bottom: 1px solid {c.border_strong};
+    background: transparent; color: {c.text_faint}; border: none; border-bottom: 1px solid {c.border};
     padding: 8px; font-size: 11px; font-weight: 600;
 }}
 QTableCornerButton::section {{ background: transparent; border: none; }}

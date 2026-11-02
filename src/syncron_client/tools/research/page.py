@@ -36,7 +36,8 @@ from syncron_core.text import format_quantity
 VALIDATE, UNVALIDATE = "validate", "unvalidate"
 
 
-def _bar(maximum: int, value: int, color: str = COLORS.accent) -> QProgressBar:
+def _bar(maximum: int, value: int, color: str | None = None) -> QProgressBar:
+    color = color or COLORS.accent
     bar = QProgressBar()
     bar.setRange(0, max(maximum, 1))
     bar.setValue(min(value, max(maximum, 1)))
@@ -103,7 +104,8 @@ class DomainCard(QFrame):
 
 
 class ConditionRow(QWidget):
-    """Une condition : état, texte, et pour une condition chiffrée la jauge (et la saisie pour l'équipe)."""
+    """Une condition sur une ligne : état, image de l'objet, texte, et à droite le compteur
+    (« 380 / 1 000 », modifiable par l'équipe) pour une condition chiffrée."""
 
     changed = Signal(int, dict)  # id de la ligne, modification
 
@@ -112,8 +114,9 @@ class ConditionRow(QWidget):
     ) -> None:
         super().__init__(parent)
         self.line = line
-        top = QHBoxLayout()
-        top.setSpacing(8)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 3, 0, 3)
+        row.setSpacing(10)
         self.done_box: QCheckBox | None = None
         if editable and line.id is not None:
             self.done_box = QCheckBox()
@@ -127,33 +130,29 @@ class ConditionRow(QWidget):
                     f"{format_quantity(line.quantity)} atteint."
                 )
             self.done_box.toggled.connect(lambda checked: self.changed.emit(line.id, {"done": checked}))
-            top.addWidget(self.done_box, 0, Qt.AlignmentFlag.AlignTop)
+            row.addWidget(self.done_box, 0, Qt.AlignmentFlag.AlignVCenter)
         else:
             glyph = QLabel()
             name, color = ("check-circle", COLORS.success) if line.done else ("circle", COLORS.text_faint)
             glyph.setPixmap(icons.pixmap(name, color, 16))
-            top.addWidget(glyph, 0, Qt.AlignmentFlag.AlignTop)
+            row.addWidget(glyph, 0, Qt.AlignmentFlag.AlignVCenter)
         if line.item_id and catalog.get(line.item_id) is not None:
             item_icon = QLabel()
-            item_icon.setPixmap(provider.item_pixmap(line.item_id, 18))
-            top.addWidget(item_icon, 0, Qt.AlignmentFlag.AlignTop)
-        text = label(line.describe(catalog), wrap=True)
+            item_icon.setFixedSize(22, 22)
+            item_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            item_icon.setPixmap(provider.item_pixmap(line.item_id, 20))
+            row.addWidget(item_icon, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.text = label(line.short(catalog), wrap=True)
+        details = line.describe(catalog)
         if line.quantity and line.quantity >= STACK.size():
-            text.setToolTip(f"{format_quantity(line.quantity)} = {decompose(line.quantity).text()}")
+            details += f"\n{format_quantity(line.quantity)} = {decompose(line.quantity).text()}"
+        self.text.setToolTip(details)
         if line.done:
-            text.setStyleSheet(f"color: {COLORS.text_muted};")
-        top.addWidget(text, 1)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 2, 0, 2)
-        layout.setSpacing(4)
-        layout.addLayout(top)
+            self.text.setStyleSheet(f"color: {COLORS.text_muted};")
+        row.addWidget(self.text, 1, Qt.AlignmentFlag.AlignVCenter)
         self.progress_spin: QSpinBox | None = None
+        self.counter: QLabel | None = None
         if line.tracked:
-            gauge = QHBoxLayout()
-            gauge.setContentsMargins(26, 0, 0, 0)
-            gauge.setSpacing(8)
-            color = COLORS.success if line.done else COLORS.accent
-            gauge.addWidget(_bar(line.quantity, line.progress or 0, color), 1)
             if editable and line.id is not None:
                 self.progress_spin = QSpinBox()
                 self.progress_spin.setRange(0, min(line.quantity * 10, 2_000_000_000))
@@ -161,14 +160,21 @@ class ConditionRow(QWidget):
                 self.progress_spin.setKeyboardTracking(False)
                 self.progress_spin.setValue(line.progress or 0)
                 self.progress_spin.setSuffix(f" / {format_quantity(line.quantity)}")
+                self.progress_spin.setAlignment(Qt.AlignmentFlag.AlignRight)
+                self.progress_spin.setStyleSheet(
+                    f"QSpinBox {{ background: {COLORS.surface}; border: 1px solid {COLORS.border}; }}"
+                    f"QSpinBox:focus {{ border-color: {COLORS.accent}; }}"
+                )
                 self.progress_spin.setToolTip("Quantité déjà réunie (Entrée pour enregistrer)")
-                self.progress_spin.setMinimumWidth(130)
+                width = self.progress_spin.fontMetrics().horizontalAdvance(self.progress_spin.text()) + 34
+                self.progress_spin.setFixedWidth(max(width, 84))
                 self.progress_spin.editingFinished.connect(self._progress_edited)
-                gauge.addWidget(self.progress_spin)
+                row.addWidget(self.progress_spin, 0, Qt.AlignmentFlag.AlignVCenter)
             else:
-                percent = round(line.fraction * 100)
-                gauge.addWidget(label(f"{line.progress_text()} · {percent} %", "faint"))
-            layout.addLayout(gauge)
+                self.counter = label(line.progress_text())
+                color = COLORS.success if line.reached else COLORS.text_muted
+                self.counter.setStyleSheet(f"color: {color}; font-weight: 600;")
+                row.addWidget(self.counter, 0, Qt.AlignmentFlag.AlignVCenter)
 
     def set_progress(self, value: int) -> None:
         """Saisie au clavier puis Entrée (utilisé aussi par les tests)."""
@@ -272,8 +278,8 @@ class TierCard(Card):
             self.rewards_note = label(note, "faint", wrap=True)
             rewards.addWidget(self.rewards_note)
         rewards.addStretch(1)
-        columns.addLayout(conditions, 3)
-        columns.addLayout(rewards, 2)
+        columns.addLayout(conditions, 2)
+        columns.addLayout(rewards, 1)
         self.body.addLayout(columns)
         recipes = unlocked_recipes(catalog, domain.skill_id, tier.level)
         if recipes:

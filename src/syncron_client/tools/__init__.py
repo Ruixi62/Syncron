@@ -13,6 +13,7 @@ from syncron_client.tools.admin import AdminTool
 from syncron_client.tools.calendar import CalendarTool
 from syncron_client.tools.converter import ConverterTool
 from syncron_client.tools.craft import CraftTool
+from syncron_client.tools.images import ImagesTool
 from syncron_client.tools.mailbox import MailboxTool
 from syncron_client.tools.planned import PlannedTool
 from syncron_client.tools.research import ResearchTool
@@ -40,6 +41,7 @@ def builtin_tools() -> list[Tool]:
         ResearchTool(),
         CalendarTool(),
         ConverterTool(),
+        ImagesTool(),
         PlannedTool(ALERTS),
         AdminTool(),
     ]
