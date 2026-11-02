@@ -405,3 +405,54 @@ class HostedImage(Base):
         CheckConstraint("content_type in ('image/png', 'image/jpeg', 'image/gif')", name="content_type"),
         CheckConstraint("width >= 1 and height >= 1 and size_bytes >= 1", name="dimensions"),
     )
+
+
+# -- Profils --------------------------------------------------------------------------------
+
+PROFILE_COLORS = ("teal", "blue", "violet", "pink", "red", "orange", "yellow", "green")
+
+
+class UserProfile(Base):
+    """Profil d'un membre, visible des autres membres dans l'annuaire."""
+
+    __tablename__ = "user_profiles"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    nickname: Mapped[str] = mapped_column(String(16), default="")
+    title: Mapped[str] = mapped_column(String(60), default="")
+    bio: Mapped[str] = mapped_column(Text, default="")
+    specialties: Mapped[list[str]] = mapped_column(JSON, default=list)
+    availability: Mapped[str] = mapped_column(String(80), default="")
+    color: Mapped[str] = mapped_column(String(12), default="teal")
+    show_discord: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        CheckConstraint("nickname = '' or nickname ~ '^[A-Za-z0-9_]{3,16}$'", name="nickname"),
+        CheckConstraint("char_length(bio) <= 600", name="bio"),
+        CheckConstraint(
+            "color in ('teal', 'blue', 'violet', 'pink', 'red', 'orange', 'yellow', 'green')", name="color"
+        ),
+    )
+
+
+# -- NationsGlory -----------------------------------------------------------------------------
+
+
+class NationsGlorySnapshot(Base):
+    """Réponse de l'API publique NationsGlory gardée en base : historique et lecture hors appel direct."""
+
+    __tablename__ = "ng_snapshots"
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(24))
+    target: Mapped[str] = mapped_column(String(160), default="")
+    status: Mapped[int] = mapped_column(Integer)
+    payload: Mapped[Any | None] = mapped_column(JSON)
+    error: Mapped[str] = mapped_column(String(300), default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    fetched_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (Index("ix_ng_snapshots_kind_target_fetched", "kind", "target", "fetched_at"),)

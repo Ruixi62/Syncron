@@ -26,6 +26,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Tous les réglages SYNCRON_* de .env (images, NationsGlory, limites…) ; ceux d'en dessous priment.
+    env_file: .env
     environment:
       SYNCRON_ENV: production
       SYNCRON_DATABASE_URL: postgresql+asyncpg://syncron:${POSTGRES_PASSWORD}@db:5432/syncron

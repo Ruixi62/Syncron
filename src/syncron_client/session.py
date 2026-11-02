@@ -70,6 +70,20 @@ class Session(QObject):
         """Systèmes du serveur : identifiant -> nom (Craft, R&D…)."""
         return dict(self._meta.get("systems") or {})
 
+    @property
+    def server_version(self) -> str:
+        return str(self._meta.get("version") or "")
+
+    def server_at_least(self, version: str) -> bool:
+        """Le serveur connecté est au moins dans cette version (fonctions récentes)."""
+        from syncron_client.config import version_tuple
+
+        return bool(self.server_version) and version_tuple(self.server_version) >= version_tuple(version)
+
+    def has_system(self, system: str) -> bool:
+        """Le serveur connaît ce système (faux pour un serveur plus ancien que l'outil)."""
+        return system in self.systems
+
     def system_name(self, system: str) -> str:
         return str((self._meta.get("systems") or {}).get(system, system))
 

@@ -38,7 +38,7 @@ class ResearchTool(Tool):
         name="R&D",
         description="Les cinq domaines de recherche du pays : paliers, conditions, récompenses et avancement.",
         icon="flask",
-        version="4.5.0",
+        version="5.1.0",
         system="research",
     )
 

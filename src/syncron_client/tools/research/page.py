@@ -28,7 +28,7 @@ from syncron_client.tools.research.model import Domain, Line, Tier, TierStatus, 
 from syncron_client.ui import icons
 from syncron_client.ui.item_icons import IconProvider
 from syncron_client.ui.theme import COLORS
-from syncron_client.ui.widgets import Card, Chip, EmptyState, button, icon_button, label
+from syncron_client.ui.widgets import Card, Chip, EmptyState, button, icon_button, label, plain_tooltip
 from syncron_core.catalog_service import CatalogService
 from syncron_core.converter import STACK, decompose
 from syncron_core.text import format_quantity
@@ -146,7 +146,7 @@ class ConditionRow(QWidget):
         details = line.describe(catalog)
         if line.quantity and line.quantity >= STACK.size():
             details += f"\n{format_quantity(line.quantity)} = {decompose(line.quantity).text()}"
-        self.text.setToolTip(details)
+        self.text.setToolTip(plain_tooltip(details))
         if line.done:
             self.text.setStyleSheet(f"color: {COLORS.text_muted};")
         row.addWidget(self.text, 1, Qt.AlignmentFlag.AlignVCenter)
@@ -329,12 +329,6 @@ class ResearchPage(QWidget):
         self.progress.setTextVisible(False)
         self.manage_button = button("Gérer", "edit")
         self.manage_button.clicked.connect(lambda: self._selected and self.manageRequested.emit(self._selected))
-        self.hint = label(
-            "Saisis les quantités réunies et coche les conditions remplies, sur n'importe quel palier : tout le "
-            "pays voit l'avancement. Quand le prochain palier est fait en jeu, clique sur « Valider le palier ».",
-            "faint",
-            wrap=True,
-        )
         titles = QVBoxLayout()
         titles.setSpacing(2)
         titles.addWidget(self.title)
@@ -352,7 +346,6 @@ class ResearchPage(QWidget):
         header.body.addLayout(top)
         header.body.addLayout(progress_row)
         header.body.addWidget(self.progress)
-        header.body.addWidget(self.hint)
 
         self._tiers = QVBoxLayout()
         self._tiers.setSpacing(12)
@@ -445,7 +438,6 @@ class ResearchPage(QWidget):
         self._detail.setVisible(domain is not None)
         self._empty.setVisible(domain is None)
         self.manage_button.setVisible(self._editable and domain is not None)
-        self.hint.setVisible(self._editable)
         if domain is not None:
             self._render_domain(domain)
 

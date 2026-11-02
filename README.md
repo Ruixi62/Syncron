@@ -1,4 +1,4 @@
-# Syncron 4.5
+# Syncron 5.1
 
 Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargeable** (Windows, Linux, macOS) réservé aux membres du pays, connecté à une **API hébergée**. La connexion se fait avec **Discord** (limitée au serveur Discord du pays), et une **administration découpée par système** permet à l'équipe de tout tenir à jour.
 
@@ -9,9 +9,10 @@ Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargea
 | **R&D** | tous | les cinq domaines (global, militaire, ressources, industrie, technologie), leurs paliers, conditions, récompenses et l'avancement du pays (380 / 1 000…), paliers validés dans l'ordre |
 | **Calendrier** | tous | réunions, guerres, événements, économie ; vue du mois ou liste ; événements récurrents |
 | **Convertisseur** | tous | stacks (64), lignes (576), coffres (1 728), doubles coffres (3 456) : division euclidienne ou unité unique |
+| **Membres** | tous | l'annuaire du pays : profils, pseudos en jeu, grades, spécialités, disponibilités |
 | **Images** | tous | héberger une image (bouton, glisser-déposer, Ctrl+V) et copier son lien public à partager sur Discord |
 | **Alertes** | tous | page en travaux : arrivera avec l'intégration de l'API NationsGlory |
-| **Administration** | éditeurs, admins | une section par système, plus les comptes et le journal |
+| **Administration** | éditeurs, admins | une rubrique par système (onglets), les comptes, NationsGlory et le journal |
 
 ```
 ┌──────────────────────────┐      HTTPS / JSON       ┌───────────────────────────┐      ┌────────────┐
@@ -29,7 +30,7 @@ Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargea
 | `src/syncron_server/` | API : FastAPI, SQLAlchemy 2 async, Alembic, Discord OAuth2, JWT, un routeur par système |
 | `src/syncron_client/` | Client de bureau : connexion, session, notifications, plateforme d'outils, un paquet par outil |
 | `deploy/` | Dockerfile, docker-compose (PostgreSQL + API + Caddy), `.env.example`, sauvegardes, catalogue d'exemple |
-| `tests/` | 183 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
+| `tests/` | 195 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
 | `docs/` | `DEPLOIEMENT.md` (mise en ligne, mises à jour), `ARCHITECTURE.md` (systèmes, ajouter un outil), `SECURITE.md` (audit) |
 
 ## Démarrage rapide (développement)
@@ -53,6 +54,17 @@ ruff check . && ruff format --check .
 ## Production
 
 Voir [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) : application Discord, `docker compose up -d --build`, build du client avec `python build_client.py --server-url https://…`, rôles et systèmes confiés, mises à jour, sauvegardes.
+
+## Nouveautés de la 5.1
+
+- **Profils et annuaire** : Paramètres › Profil (pseudo en jeu, grade, description, spécialités, disponibilités, couleur, pseudo Discord visible ou non) avec aperçu ; nouvel outil **Membres** pour chercher qui fait quoi.
+- **Paramètres refaits** en rubriques : Profil, Apparence, Notifications, Compte, Serveur, Stockage, Outils, À propos.
+- **Thèmes** : clair adouci (plus de blanc éclatant), **Forêt** (sombre aux reflets verts) et **Cerisier** (rose pâle), choisis sur des vignettes.
+- **Administration réorganisée** : rubriques en haut, onglets de la rubrique dessous, écrans en pleine largeur ; vue d'ensemble avec la liste de tout ce qui reste à faire.
+- **NationsGlory** : connexion à l'API publique préparée côté serveur (clé jamais transmise au client, routes vérifiées, cache, historique en base) et écran Administration › NationsGlory pour tester et lire les réponses.
+- **Images** : message clair si le serveur n'est pas à jour, au lieu de « Not Found ».
+- **R&D** : la ligne d'aide sous l'avancement est retirée.
+- **Sécurité** : voir [`docs/SECURITE.md`](docs/SECURITE.md) (section 5.1).
 
 ## Nouveautés de la 4.5
 

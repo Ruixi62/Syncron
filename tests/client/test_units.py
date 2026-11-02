@@ -87,3 +87,37 @@ def test_pkce_pair_matches_server_check():
 
     verifier, challenge = pkce_pair()
     assert verify_pkce(verifier, challenge)
+
+
+def test_client_only_downloads_from_the_server_or_discord_avatars():
+    import httpx
+    import pytest
+
+    from syncron_client.api.client import ApiClient
+    from syncron_client.api.errors import ApiError
+
+    seen = []
+    transport = httpx.MockTransport(lambda request: seen.append(str(request.url)) or httpx.Response(200, content=b"ok"))
+    api = ApiClient("https://api.syncron.test", transport=transport)
+    assert api.download("/media/images/abc.png") == b"ok"
+    assert api.download("https://cdn.discordapp.com/avatars/1/" + "f" * 32 + ".png") == b"ok"
+    for url in (
+        "https://evil.test/x",
+        "//evil.test/x",
+        "http://cdn.discordapp.com/avatars/1/x.png",
+        "file:///etc/passwd",
+    ):
+        with pytest.raises(ApiError):
+            api.download(url)
+    assert seen == [
+        "https://api.syncron.test/media/images/abc.png",
+        "https://cdn.discordapp.com/avatars/1/" + "f" * 32 + ".png",
+    ]
+
+
+def test_tooltips_never_render_member_html():
+    from syncron_client.ui.widgets import plain_tooltip
+
+    assert plain_tooltip("") == ""
+    tip = plain_tooltip("<img src='file:///c:/x'> <b>gras</b>\nligne 2")
+    assert "<img" not in tip and "&lt;img" in tip and "<br>" in tip and tip.startswith("<qt>")

@@ -1,4 +1,4 @@
-# Syncron 4.5 — Architecture
+# Syncron 5.1 — Architecture
 
 Syncron est le logiciel interne d'un pays de NationsGlory : un client de bureau réservé aux membres, connecté à une API hébergée.
 
@@ -26,6 +26,8 @@ Tout est découpé en **systèmes**. Chacun a ses tables, ses routes de lecture,
 | `calendar` | `/api/v1/calendar/events` | `/api/v1/admin/calendar/…` | Calendrier |
 | `messages` | `/api/v1/inbox` | `/api/v1/admin/messages` | Messagerie |
 | `images` | `/api/v1/images` (envoi par tout membre) | suppression de toute image | Images |
+| `nationsglory` | `/api/v1/nationsglory/country` | `/api/v1/admin/nationsglory/…` | Administration › NationsGlory |
+| — | `/api/v1/profile`, `/api/v1/members` | chacun son profil | Membres, Paramètres › Profil |
 | — | — | — | Convertisseur (local), Alertes (en travaux) |
 
 Un éditeur gère les systèmes listés dans `users.permissions` ; un administrateur les gère tous, plus les comptes (`accounts` dans le journal).
@@ -85,6 +87,24 @@ erDiagram
         date recurrence_until
         json skipped_dates "dates annulées"
     }
+    users ||--o| user_profiles : "profil"
+    users ||--o{ ng_snapshots : "appelle"
+    user_profiles {
+        uuid user_id PK
+        string nickname "pseudo en jeu"
+        string title "grade"
+        text bio
+        json specialties
+        string color
+        bool show_discord
+    }
+    ng_snapshots {
+        bigint id PK
+        string kind "country | notations | …"
+        string target "country/blue/levant"
+        int status
+        json payload "réponse brute"
+    }
     users ||--o{ hosted_images : "envoie"
     hosted_images {
         uuid id PK
@@ -126,6 +146,10 @@ Tout système publie une nouvelle avec `messaging.post_message(session, system=�
 3. Un routeur `routers/<système>.py` avec `router` (lecture, `UserDep`) et `admin_router` (gestion, `Depends(manager("<système>"))`), inclus dans `app.py`.
 4. Un résumé `@overview_provider("<système>")` pour la vue d'ensemble, et `audit.record(…, "<système>", …)` à chaque écriture.
 
+### NationsGlory
+
+`nationsglory.py` : client de l'API publique (https://publicapi.nationsglory.fr). Routes connues : `playercount`, `country/{serveur}/{pays}`, `country/list/{serveur}`, `notations`, `mmr`, `hdv/{serveur}`, `planning`, `user/{pseudo}`. Chaque appel passe par des paramètres validés, sans redirection, 2 Mo au plus, avec un cache en mémoire ; la réponse est gardée dans `ng_snapshots` (100 par route, 5 000 au total). Les futurs outils (Alertes…) liront ces données en base plutôt que d'appeler l'API eux-mêmes.
+
 ### Protections HTTP
 
 `protection.py` : limite de débit par adresse sur `/api/v1/auth/*` (`SYNCRON_AUTH_RATE_LIMIT`, 30 par minute) et taille maximale des requêtes (`SYNCRON_MAX_REQUEST_BYTES`, 5 Mo). Les images sont refusées au-delà de 4096 × 4096 pixels avant décodage. Détails dans `SECURITE.md`.
@@ -157,6 +181,9 @@ Tout système publie une nouvelle avec `messaging.post_message(session, system=�
 | GET, POST, DELETE | `/api/v1/admin/messages[/{id}]`, `/recipients` | Messagerie |
 | GET, POST | `/api/v1/images` (galerie, `?mine=true`, envoi multipart) | connecté |
 | PATCH, DELETE | `/api/v1/images/{id}` | auteur de l'image, ou Images |
+| GET, PUT | `/api/v1/profile` · GET `/api/v1/members[/{id}]` | connecté (son profil ; annuaire sans comptes suspendus) |
+| GET | `/api/v1/nationsglory/country` (dernières données du pays) | connecté |
+| GET, POST | `/api/v1/admin/nationsglory`, `/fetch`, `/snapshots[/{id}]` | NationsGlory |
 | GET, PATCH | `/api/v1/admin/users` | admin |
 | GET | `/media/…` (dont `/media/images/<jeton>` : images partagées) | public, cache immuable |
 
@@ -167,7 +194,7 @@ Launcher ──▶ LoginWindow ──(Discord / reprise / hors ligne)──▶ S
    │                                                            │
    ├─ ApiClient (httpx, renouvellement des jetons)              ├─ Accueil (cartes des outils) · Paramètres
    ├─ TokenStore (coffre du système, ou fichier en repli)       ├─ Messagerie            (barre latérale, en haut)
-   ├─ CatalogStore (cache disque, ETag, images)                 ├─ Craft · R&D · Calendrier · Convertisseur · Images · Alertes (en travaux)
+   ├─ CatalogStore (cache disque, ETag, images)                 ├─ Craft · R&D · Calendrier · Membres · Convertisseur · Images · Alertes (en travaux)
    ├─ NotificationCenter (cloche, bulles, bureau)               └─ Administration        (Gestion, éditeurs+)
    ├─ Session (utilisateur, rôle, systèmes confiés, en ligne)
    └─ TaskRunner (QThreadPool → retour dans le thread de l'interface)
@@ -175,7 +202,7 @@ Launcher ──▶ LoginWindow ──(Discord / reprise / hors ligne)──▶ S
 
 - **Aucun appel réseau dans le thread de l'interface** : `TaskRunner` exécute les appels dans le pool de Qt.
 - **Notifications** : `NotificationCenter` interroge `/inbox/summary` toutes les 60 secondes. Un message plus récent que le dernier vu (mémorisé par compte) déclenche une bulle, la pastille de la cloche et, si la fenêtre est en arrière-plan, une notification du bureau (désactivable dans Paramètres).
-- **Thème** : `ui/theme.py` définit une palette sombre et une claire ; `COLORS` est un seul objet dont les valeurs changent (`use_palette`). Changer de thème (Paramètres › Apparence, ou le système en mode « Système ») réapplique la feuille de style et reconstruit les fenêtres.
+- **Thème** : `ui/theme.py` définit les palettes Sombre, Clair, Forêt et Cerisier ; `COLORS` est un seul objet dont les valeurs changent (`use_palette`). Changer de thème (Paramètres › Apparence, ou le système en mode « Système ») réapplique la feuille de style et reconstruit les fenêtres.
 - **Hors ligne** : si le serveur est injoignable, l'application s'ouvre en lecture seule sur les dernières données reçues (catalogue, R&D, calendrier), avec une pastille « Hors ligne · Réessayer ».
 - **Version minimale** : `/meta.min_client_version` bloque les clients trop anciens.
 

@@ -1,4 +1,4 @@
-# Audit de sécurité — Syncron 4.3, mis à jour en 4.5
+# Audit de sécurité — Syncron 4.3, mis à jour en 4.5 et 5.1
 
 Revue du serveur (FastAPI, PostgreSQL), du client (PySide6), du déploiement (Docker, Caddy) et de la mise à jour automatique. Chaque point corrigé est couvert par un test (`tests/server/test_security.py`, `tests/client/test_units.py`, `tests/client/test_systems_ui.py`).
 
@@ -13,6 +13,21 @@ Revue du serveur (FastAPI, PostgreSQL), du client (PySide6), du déploiement (Do
 | 5 | Faible | **Taille des requêtes** limitée seulement par Caddy : une API exposée sans Caddy acceptait des corps JSON énormes (import). | Limite dans l'application aussi : 5 Mo, portée à 10 Mo en 4.5 pour les images (`SYNCRON_MAX_REQUEST_BYTES`), réponse 413. |
 | 6 | Faible | **Image envoyée pour un objet inexistant** : le fichier était écrit sur le disque avant la vérification, et l'identifiant n'était pas contrôlé. | Identifiant et existence vérifiés avant toute écriture. |
 | 7 | Faible | **Mise à jour automatique** : l'archive pouvait venir de n'importe quel hôte indiqué par la Release, sans limite de taille, et l'extraction faisait confiance aux chemins du zip. | Téléchargements uniquement depuis GitHub en HTTPS (redirections comprises), 400 Mo au plus, 1 Go une fois extrait, chemins vérifiés un par un avant extraction. |
+
+## Corrigé dans la 5.1
+
+| # | Gravité | Problème | Correction |
+|---|---|---|---|
+| 1 | Moyenne | **Réglages ignorés en production** : `docker-compose.yml` ne transmettait à l'API qu'une liste fixe de variables. Les limites ajoutées depuis la 4.3 (`SYNCRON_AUTH_RATE_LIMIT`, tailles et quotas d'images) restaient à leur valeur par défaut, quoi qu'on mette dans `.env`. | `env_file: .env` : tout `SYNCRON_*` de `.env` arrive à l'API. |
+| 2 | Moyenne | **Adresse du client usurpable** : uvicorn faisait confiance à `X-Forwarded-For` venant de n'importe où. Une API joignable sans passer par Caddy permettait de contourner la limite de connexions en changeant d'adresse à chaque essai. | Seuls le réseau Docker et la machine locale peuvent la transmettre (`SYNCRON_FORWARDED_ALLOW_IPS`). |
+| 3 | Faible | **HTML dans les info-bulles** : Qt interprète le HTML d'une info-bulle. Un nom d'objet, un titre d'image ou d'événement, une description de profil contenant `<img src=…>` ou un lien s'affichait mis en forme au survol. | Toutes les info-bulles qui reprennent un texte saisi l'échappent (`plain_tooltip`). |
+| 4 | Faible | **Téléchargements du client sans restriction** : le client téléchargeait toute adresse renvoyée par le serveur (avatars, images). | Seulement les fichiers du serveur Syncron et les avatars `https://cdn.discordapp.com/avatars/`. |
+| 5 | Faible | **Avatar Discord non vérifié** : l'identifiant d'avatar reçu de Discord entrait tel quel dans une adresse. | Format vérifié (`[a_]` + 32 caractères hexadécimaux), sinon ignoré. |
+| 6 | Faible | **Envoi d'images en rafale** : seul le quota total freinait un membre ; chaque envoi décode et réencode l'image (processeur). | 30 envois par 10 minutes et par membre (`SYNCRON_HOSTED_IMAGE_UPLOADS_PER_10_MINUTES`), réponse 429. |
+| 7 | Faible | **Fichiers média** : servis sans politique de contenu. | `Content-Security-Policy: default-src 'none'; sandbox` sur `/media/*` (Caddy). |
+| 8 | Info | **Dépendances** : bornes basses anciennes (`python-multipart` 0.0.9, `h11` non borné) qui ont connu des failles. | `python-multipart>=0.0.20`, `h11>=0.16`. `pip-audit` : aucune vulnérabilité connue. |
+
+Nouveautés vérifiées : **profils** (chacun ne modifie que le sien, longueurs et formats contrôlés, comptes suspendus absents de l'annuaire, pseudo Discord masquable) ; **NationsGlory** (clé uniquement côté serveur et jamais renvoyée, HTTPS obligatoire, routes construites à partir de paramètres validés puis encodés, pas de redirection suivie, 2 Mo par réponse, 20 appels directs par minute et par compte, historique plafonné).
 
 ## Hébergement d'images (4.5)
 

@@ -4,6 +4,8 @@
 
 	@media path /media/*
 	header @media Cache-Control "public, max-age=31536000, immutable"
+	# Les fichiers média ne sont que des images : aucun script, aucune page, même si un fichier était piégé.
+	header @media Content-Security-Policy "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
 
 	request_body {
 		max_size 10MB

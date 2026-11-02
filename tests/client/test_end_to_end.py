@@ -133,7 +133,7 @@ def test_users_management_and_audit(make_launcher, server, tmp_path):
     assert audit.entries() == []
     overview = admin_section(shell, "admin.overview")
     assert "2 compte(s)" in overview.accounts_text.text()
-    assert list(overview.cards) == ["craft", "research", "calendar", "messages", "images"]
+    assert list(overview.cards) == ["craft", "research", "calendar", "messages", "images", "nationsglory"]
     assert "Recettes sans temps de fabrication" not in overview.cards["craft"].todo
 
 

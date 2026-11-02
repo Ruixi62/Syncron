@@ -20,6 +20,8 @@ SYSTEM_ICONS = {
     "research": "flask",
     "calendar": "calendar",
     "messages": "megaphone",
+    "images": "image",
+    "nationsglory": "globe",
     "accounts": "users",
 }
 SYSTEM_COLUMNS = 2
@@ -92,6 +94,11 @@ class OverviewView(QWidget):
         self._host = host
         self._data: dict[str, Any] | None = None
         self.cards: dict[str, SystemCard] = {}
+        self.todo = Card(padding=18, spacing=8)
+        self.todo.body.addWidget(label("À FAIRE", "overline"))
+        self._todo_rows = QVBoxLayout()
+        self._todo_rows.setSpacing(6)
+        self.todo.body.addLayout(self._todo_rows)
         self._systems = QGridLayout()
         self._systems.setSpacing(16)
         self.accounts = Card(padding=18, spacing=8)
@@ -109,6 +116,7 @@ class OverviewView(QWidget):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 4, 0)
         layout.setSpacing(16)
+        layout.addWidget(self.todo)
         layout.addLayout(self._systems)
         layout.addWidget(self.accounts)
         layout.addWidget(activity, 1)
@@ -138,6 +146,7 @@ class OverviewView(QWidget):
             self._systems.addWidget(card, index // SYSTEM_COLUMNS, index % SYSTEM_COLUMNS)
         for column in range(SYSTEM_COLUMNS):
             self._systems.setColumnStretch(column, 1)
+        self._show_todo(data["systems"])
         accounts = data.get("accounts")
         self.accounts.setVisible(accounts is not None)
         if accounts:
@@ -161,3 +170,36 @@ class OverviewView(QWidget):
                 ]
             )
         fill_rows(self.activity, rows)
+
+    def _show_todo(self, systems: list[dict[str, Any]]) -> None:
+        """Tout ce qui reste à compléter, tous systèmes confondus, avec un raccourci vers la rubrique."""
+        _clear_layouts(self._todo_rows)
+        pending = [(system, todo) for system in systems for todo in system.get("todo", []) if todo["count"]]
+        if not pending:
+            self._todo_rows.addWidget(label("Rien à compléter : tout est à jour.", "muted"))
+            return
+        for system, todo in pending:
+            row = QHBoxLayout()
+            row.setSpacing(10)
+            glyph = QLabel()
+            glyph.setPixmap(icons.pixmap(SYSTEM_ICONS.get(system["id"], "grid"), COLORS.text_faint, 15))
+            row.addWidget(glyph)
+            row.addWidget(label(f"{system['name']} · {todo['label']}", "muted"), 1)
+            row.addWidget(Chip(str(todo["count"]), "warning"))
+            go = button("Ouvrir", "arrow-right", "ghost")
+            go.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+            go.clicked.connect(lambda _checked=False, key=system["id"]: self.manageRequested.emit(key))
+            row.addWidget(go)
+            self._todo_rows.addLayout(row)
+
+
+def _clear_layouts(layout) -> None:
+    while layout.count():
+        item = layout.takeAt(0)
+        widget = item.widget()
+        if widget is not None:
+            widget.hide()
+            widget.setParent(None)
+            widget.deleteLater()
+        elif item.layout() is not None:
+            _clear_layouts(item.layout())

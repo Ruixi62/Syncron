@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -87,12 +87,15 @@ async def list_images(
 
 @router.post("", response_model=HostedImageOut, status_code=status.HTTP_201_CREATED)
 async def upload_image(
+    request: Request,
     session: SessionDep,
     settings: SettingsDep,
     user: UserDep,
     file: Annotated[UploadFile, File()],
     title: Annotated[str | None, Form(max_length=120)] = None,
 ) -> HostedImageOut:
+    if not request.app.state.image_uploads.allow(str(user.id)):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Trop d'envois d'images d'affilée : patiente un peu.")
     limit = settings.hosted_images_per_user
     if limit and await _count(session, user) >= limit:
         raise HTTPException(

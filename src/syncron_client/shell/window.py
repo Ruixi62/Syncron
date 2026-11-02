@@ -22,7 +22,7 @@ from syncron_client.shell.command_palette import CommandPalette
 from syncron_client.shell.home_page import HomePage
 from syncron_client.shell.host import ShellHost
 from syncron_client.shell.love_page import LOVE_ID, LovePage
-from syncron_client.shell.settings_page import DESKTOP_NOTIFICATIONS_KEY, SettingsPage
+from syncron_client.shell.settings_page import DESKTOP_NOTIFICATIONS_KEY, TASKBAR_BADGE_KEY, SettingsPage
 from syncron_client.shell.sidebar import HOME_ID, SETTINGS_ID, Sidebar
 from syncron_client.shell.toast import Toast
 from syncron_client.shell.top_bar import TopBar
@@ -102,7 +102,7 @@ class ShellWindow(QMainWindow):
         self._top_bar.retryRequested.connect(self.retry_connection)
         self._top_bar.notificationsRequested.connect(lambda: self.show_page(MAILBOX_ID))
         host.notifications.unreadChanged.connect(self._top_bar.set_unread)
-        host.notifications.unreadChanged.connect(set_taskbar_badge)
+        host.notifications.unreadChanged.connect(self._update_badge)
         host.notifications.received.connect(self._on_messages_received)
         host.session.onlineChanged.connect(self._on_online_changed)
         self._install_shortcuts()
@@ -110,6 +110,9 @@ class ShellWindow(QMainWindow):
         self._on_online_changed(host.session.online)
 
         self._restore_state()
+
+    def _update_badge(self, count: int) -> None:
+        set_taskbar_badge(count if self._settings.get(TASKBAR_BADGE_KEY, True) is not False else 0)
 
     # -- navigation --------------------------------------------------------------
 
@@ -141,13 +144,18 @@ class ShellWindow(QMainWindow):
             self._top_bar.set_page("♥", "")
         else:
             self._settings_page.refresh()
-            self._top_bar.set_page("Paramètres", "Compte, apparence, serveur, stockage local, à propos")
+            self._top_bar.set_page("Paramètres", "Profil, apparence, notifications, compte, serveur, stockage")
         self._top_bar.set_search_visible(page_id not in (HOME_ID, LOVE_ID))
         self._stack.setCurrentWidget(self._pages[page_id])
         self._sidebar.set_current(page_id)
         self._current = page_id
 
     def open_in_tool(self, tool_id: str, key: str | None = None) -> None:
+        if tool_id == SETTINGS_ID:
+            self.show_page(SETTINGS_ID)
+            if key:
+                self._settings_page.show_section(key)
+            return
         if tool_id not in self._registry:
             return
         self.show_page(tool_id)

@@ -17,6 +17,7 @@ inutilisable sans le code_verifier, connu du seul client qui a lancé la connexi
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode, urlsplit
 
@@ -44,6 +45,7 @@ from syncron_server.security import (
 from syncron_server.systems import ACCOUNTS, SYSTEMS, clean_permissions
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+AVATAR_HASH = re.compile(r"^(a_)?[0-9a-f]{32}$")  # format des avatars Discord
 LOGIN_CODE_TTL = timedelta(minutes=2)
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
@@ -214,7 +216,7 @@ async def upsert_user(session: AsyncSession, settings: Settings, profile: Discor
         session.add(user)
     user.username = profile.username
     user.display_name = profile.global_name
-    user.avatar = profile.avatar
+    user.avatar = profile.avatar if profile.avatar and AVATAR_HASH.match(profile.avatar) else None
     user.last_login_at = utcnow()
     if profile.id in settings.admin_ids:
         user.role = Role.ADMIN.value

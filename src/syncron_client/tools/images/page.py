@@ -21,6 +21,7 @@ from syncron_client.ui.widgets import (
     button,
     icon_button,
     label,
+    plain_tooltip,
 )
 
 CARD_WIDTH = 220
@@ -46,11 +47,11 @@ class ImageCard(QFrame):
         self.thumb.setFixedSize(CARD_WIDTH - 16, THUMB_HEIGHT)
         self.thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.thumb.setPixmap(icons.pixmap("image", COLORS.text_faint, 28))
-        self.thumb.setToolTip(image.title)
+        self.thumb.setToolTip(plain_tooltip(image.title))
         self.title = ElidedLabel(image.title, "heading")
-        self.title.setToolTip(image.title)
+        self.title.setToolTip(plain_tooltip(image.title))
         self.details = ElidedLabel(image.details(), "faint")
-        self.details.setToolTip(image.details())
+        self.details.setToolTip(plain_tooltip(image.details()))
 
         self.copy_button = button("Copier", "copy", "primary")
         self.copy_button.setToolTip("Copier le lien public de l'image (à coller sur Discord…)")
@@ -113,6 +114,7 @@ class ImagesPage(QWidget):
         self._cards: dict[str, ImageCard] = {}
         self._thumbnails: dict[str, Path] = {}
         self._online = True
+        self._unavailable: str | None = None
 
         self.scope = SegmentedControl([("Toutes", None), ("Les miennes", None)])
         self.scope.currentChanged.connect(lambda index: self.filterChanged.emit(index == 1))
@@ -177,7 +179,20 @@ class ImagesPage(QWidget):
 
     def set_online(self, online: bool) -> None:
         self._online = online
+        self._unavailable = None
         self.upload_button.setEnabled(online)
+        self._render()
+
+    def set_unavailable(self, server_version: str) -> None:
+        """Serveur trop ancien : pas de route d'envoi. On le dit au lieu d'afficher « Not Found »."""
+        version = f" (version {server_version})" if server_version else ""
+        self._unavailable = (
+            f"Le serveur du pays{version} n'a pas encore l'hébergement d'images. "
+            "Préviens l'équipe : il faut mettre le serveur à jour (git pull puis docker compose up -d --build)."
+        )
+        self._images = []
+        self.upload_button.setEnabled(False)
+        self.quota.clear()
         self._render()
 
     def set_images(self, images: list[HostedImage], mine_count: int, limit: int) -> None:
@@ -204,7 +219,7 @@ class ImagesPage(QWidget):
 
     def receive(self, mime: QMimeData | None) -> bool:
         """Fichiers images, ou image copiée (capture d'écran) : transmis pour envoi."""
-        if mime is None or not self._online:
+        if mime is None or not self._online or self._unavailable:
             return False
         files = [Path(url.toLocalFile()) for url in mime.urls() if url.isLocalFile()]
         files = [path for path in files if path.suffix.lower() in IMAGE_SUFFIXES]
@@ -225,7 +240,7 @@ class ImagesPage(QWidget):
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         mime = event.mimeData()
         has_files = any(Path(u.toLocalFile()).suffix.lower() in IMAGE_SUFFIXES for u in mime.urls())
-        if self._online and (has_files or mime.hasImage()):
+        if self._online and not self._unavailable and (has_files or mime.hasImage()):
             event.acceptProposedAction()
 
     def dropEvent(self, event: QDropEvent) -> None:
@@ -248,7 +263,9 @@ class ImagesPage(QWidget):
             self.grid.add(card)
         self.scroll.setVisible(bool(shown))
         self.empty.setVisible(not shown)
-        if not self._online:
+        if self._unavailable:
+            self.empty.body_label.setText(self._unavailable)
+        elif not self._online:
             self.empty.body_label.setText("Hors ligne : la galerie revient dès la reconnexion.")
         elif query and self._images:
             self.empty.body_label.setText("Aucune image ne correspond à cette recherche.")

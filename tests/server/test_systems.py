@@ -30,7 +30,14 @@ async def test_overview_is_split_by_system_and_permission(client, seeded, admin,
     await client.patch(f"/api/v1/admin/users/{artisan}", json={"permissions": ["craft"]}, headers=admin)
 
     board = (await client.get("/api/v1/admin/overview", headers=admin)).json()
-    assert [s["id"] for s in board["systems"]] == ["craft", "research", "calendar", "messages", "images"]
+    assert [s["id"] for s in board["systems"]] == [
+        "craft",
+        "research",
+        "calendar",
+        "messages",
+        "images",
+        "nationsglory",
+    ]
     craft = board["systems"][0]
     assert {t["label"] for t in craft["todo"]} == {"Objets sans image", "Objets sans catégorie", "Ateliers sans image"}
     assert craft["stats"][0] == {"label": "Objets", "value": "15", "detail": "6 ressource(s) primaire(s)"}

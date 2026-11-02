@@ -2,7 +2,7 @@
 
 Syncron est le logiciel interne du pays : il est réservé à ses membres. Ce guide va d'un serveur vide jusqu'au client distribué aux membres. Compter environ 30 minutes.
 
-> **Tu mets à jour un serveur existant ?** Lis directement la [section 8](#8-passer-à-la-45).
+> **Tu mets à jour un serveur existant ?** Lis directement la [section 8](#8-passer-à-la-51).
 
 ## 1. Prérequis
 
@@ -82,7 +82,18 @@ Dans **Comptes**, passe un membre en Éditeur, puis choisis ses systèmes dans l
 - **Serveur** : `git pull && docker compose up -d --build`. Les migrations s'appliquent toutes seules.
 - **Client** : publie le nouveau build. Pour obliger les membres à mettre à jour, augmente `SYNCRON_MIN_CLIENT_VERSION` dans `.env`, puis lance `docker compose up -d`. Les anciens clients affichent alors « Mise à jour requise ».
 
-## 8. Passer à la 4.5
+## 8. Passer à la 5.1
+
+La migration `0006` ajoute les profils des membres et l'historique de l'API NationsGlory.
+
+1. Sur le serveur : `git pull && docker compose up -d --build`. Le `docker-compose.yml` lit maintenant **tout** `deploy/.env` (`env_file`) : les réglages facultatifs (images, NationsGlory, limites) y sont enfin pris en compte. Caddy reçoit aussi une protection supplémentaire sur `/media`.
+2. Publie le client : pousse sur `main`, la Release `v5.1.0` se crée et les clients se mettent à jour seuls. `SYNCRON_MIN_CLIENT_VERSION` peut rester à `4.4.0`.
+
+**L'outil Images affichait « Not Found » ?** C'est le signe d'un serveur resté en 4.4 : la route d'envoi n'existe pas encore. Après l'étape 1, vérifie `https://<ton domaine>/api/v1/meta` : `"version"` doit valoir `5.1.0` et `"systems"` contenir `images`. Le client 5.1 l'explique désormais en clair au lieu d'afficher « Not Found ».
+
+**Relier le pays à NationsGlory** : dans `.env`, décommente et remplis `SYNCRON_NG_API_KEY`, `SYNCRON_NG_SERVER` (ex. `blue`) et `SYNCRON_NG_COUNTRY`, puis `docker compose up -d`. Teste dans Administration › NationsGlory (« Nombre de joueurs », puis « Pays »). Si la clé est refusée, essaie `SYNCRON_NG_API_AUTH_SCHEME=` (vide) ou un autre en-tête avec `SYNCRON_NG_API_AUTH_HEADER` : la documentation de NationsGlory ne précise pas le format attendu.
+
+### Passer à la 4.5
 
 La migration `0005` crée la table des images hébergées ; rien d'autre ne change dans la base.
 

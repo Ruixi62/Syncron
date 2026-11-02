@@ -117,3 +117,28 @@ class BodySizeLimit:
 
 class _TooLarge(Exception):
     pass
+
+
+class SlidingWindow:
+    """Au plus `limit` actions par `window` secondes et par clé (compte, adresse…), en mémoire."""
+
+    def __init__(self, limit: int, window: float, clock: Callable[[], float] = time.monotonic) -> None:
+        self.limit = limit
+        self.window = window
+        self._clock = clock
+        self._hits: dict[str, deque[float]] = {}
+
+    def allow(self, key: str) -> bool:
+        if self.limit <= 0:
+            return True
+        now = self._clock()
+        hits = self._hits.setdefault(key, deque())
+        while hits and now - hits[0] > self.window:
+            hits.popleft()
+        if len(hits) >= self.limit:
+            return False
+        hits.append(now)
+        if len(self._hits) > MAX_TRACKED_CLIENTS:
+            for stale in [k for k, h in self._hits.items() if not h or now - h[-1] > self.window]:
+                del self._hits[stale]
+        return True

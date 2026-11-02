@@ -18,7 +18,7 @@ def _query(url: str) -> dict[str, str]:
 
 async def discord_login(client, discord, discord_id: str, code: str = "abc", verifier: str | None = None):
     """Rejoue le parcours complet du client de bureau ; retourne (réponse /token, paramètres du retour loopback)."""
-    discord.users.setdefault(code, DiscordUser(discord_id, f"user{discord_id[-3:]}", "Pseudo", "hash"))
+    discord.users.setdefault(code, DiscordUser(discord_id, f"user{discord_id[-3:]}", "Pseudo", "0123456789abcdef" * 2))
     verifier = verifier or new_secret_token() + new_secret_token()
     start = await client.get(
         "/api/v1/auth/discord/start",

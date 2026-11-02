@@ -51,6 +51,7 @@ from syncron_client.ui.widgets import (
     compact_combo,
     icon_button,
     label,
+    plain_tooltip,
 )
 from syncron_core.catalog_service import CatalogService
 from syncron_core.models.reference import SkillKind
@@ -295,7 +296,7 @@ class TierStrip(QWidget):
             tier_button.setFixedSize(40, 34)
             tier_button.setCursor(Qt.CursorShape.PointingHandCursor)
             tooltip = f"Palier {tier.level} · {status.label}" + (f" · {tier.name}" if tier.name else "")
-            tier_button.setToolTip(tooltip + ("" if filled else " · vide"))
+            tier_button.setToolTip(plain_tooltip(tooltip + ("" if filled else " · vide")))
             underline = f"border-bottom: 3px solid {color};" if filled else ""
             tier_button.setStyleSheet(
                 f"QPushButton {{ padding: 0; color: {color}; background: {background}; border-radius: 9px;"

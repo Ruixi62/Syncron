@@ -30,10 +30,28 @@ class ThemeMode(StrEnum):
     SYSTEM = "system"
     DARK = "dark"
     LIGHT = "light"
+    FOREST = "forest"
+    CHERRY = "cherry"
 
     @property
     def label(self) -> str:
-        return {"system": "Système", "dark": "Sombre", "light": "Clair"}[self.value]
+        return {
+            "system": "Système",
+            "dark": "Sombre",
+            "light": "Clair",
+            "forest": "Forêt",
+            "cherry": "Cerisier",
+        }[self.value]
+
+    @property
+    def caption(self) -> str:
+        return {
+            "system": "Suit le mode sombre ou clair de ton ordinateur",
+            "dark": "Nuit bleutée, accent turquoise",
+            "light": "Gris doux, sans blanc éclatant",
+            "forest": "Sombre aux reflets verts",
+            "cherry": "Rose pâle de fleur de cerisier",
+        }[self.value]
 
 
 @dataclass(slots=True)
@@ -76,39 +94,115 @@ class Palette:
 DARK = Palette()
 LIGHT = Palette(
     dark=False,
-    bg="#eef1f5",
-    sidebar="#e7ebf0",
-    surface="#ffffff",
-    surface_alt="#f4f6f9",
-    surface_hover="#e7ebf0",
-    border="#e3e7ec",
-    border_strong="#cfd5de",
-    card_border="#e6e9ee",
-    text="#161b26",
-    text_muted="#566074",
-    text_faint="#8790a1",
-    accent="#0f9e88",
-    accent_hover="#12b39a",
-    accent_pressed="#0b8774",
+    bg="#e4e8ee",
+    sidebar="#dbe0e7",
+    surface="#f4f6f9",
+    surface_alt="#eaedf2",
+    surface_hover="#e0e4eb",
+    border="#d4dae3",
+    border_strong="#c0c8d3",
+    card_border="#d6dce4",
+    text="#1a202c",
+    text_muted="#4e586a",
+    text_faint="#7d8698",
+    accent="#0f9883",
+    accent_hover="#12ab93",
+    accent_pressed="#0b8170",
     accent_text="#ffffff",
-    accent_soft="rgba(15, 158, 136, 0.11)",
-    info="#2f6fe4",
-    info_soft="rgba(47, 111, 228, 0.10)",
-    success="#3b8f1d",
-    success_soft="rgba(59, 143, 29, 0.11)",
-    warning="#b86e00",
-    warning_soft="rgba(214, 135, 0, 0.12)",
-    danger="#d63a40",
-    danger_soft="rgba(214, 58, 64, 0.10)",
-    violet="#7552d9",
-    violet_soft="rgba(117, 82, 217, 0.10)",
-    hero_start="#dff5f0",
-    hero_end="#e6eefb",
-    brand_start="#d9f2ec",
-    brand_mid="#eef3f8",
-    brand_end="#e1ebf8",
+    accent_soft="rgba(15, 152, 131, 0.12)",
+    info="#2d68d6",
+    info_soft="rgba(45, 104, 214, 0.11)",
+    success="#3a8a1e",
+    success_soft="rgba(58, 138, 30, 0.12)",
+    warning="#b06900",
+    warning_soft="rgba(214, 135, 0, 0.13)",
+    danger="#cf3a40",
+    danger_soft="rgba(207, 58, 64, 0.11)",
+    violet="#7050d0",
+    violet_soft="rgba(112, 80, 208, 0.11)",
+    hero_start="#d5ece7",
+    hero_end="#dce4f1",
+    brand_start="#d3ebe5",
+    brand_mid="#e6ebf1",
+    brand_end="#d9e3f0",
     shadow="rgba(16, 24, 40, 0.08)",
 )
+FOREST = Palette(
+    dark=True,
+    bg="#0b130f",
+    sidebar="#0e1712",
+    surface="#132019",
+    surface_alt="#192920",
+    surface_hover="#203327",
+    border="#1d2d24",
+    border_strong="#2b4134",
+    card_border="transparent",
+    text="#e3eee6",
+    text_muted="#91a898",
+    text_faint="#5d7365",
+    accent="#5cd08a",
+    accent_hover="#7ddca2",
+    accent_pressed="#43b672",
+    accent_text="#04200e",
+    accent_soft="rgba(92, 208, 138, 0.14)",
+    info="#6cb1e6",
+    info_soft="rgba(108, 177, 230, 0.13)",
+    success="#a7d878",
+    success_soft="rgba(167, 216, 120, 0.13)",
+    warning="#e8b04a",
+    warning_soft="rgba(232, 176, 74, 0.12)",
+    danger="#ee6461",
+    danger_soft="rgba(238, 100, 97, 0.12)",
+    violet="#b29ad9",
+    violet_soft="rgba(178, 154, 217, 0.12)",
+    hero_start="#14301f",
+    hero_end="#10211a",
+    brand_start="#14301f",
+    brand_mid="#0f1a14",
+    brand_end="#0f2219",
+    shadow="rgba(0, 0, 0, 0.35)",
+)
+CHERRY = Palette(
+    dark=False,
+    bg="#f3e4ea",
+    sidebar="#ecd8e0",
+    surface="#fcf5f7",
+    surface_alt="#f6e9ee",
+    surface_hover="#efdce4",
+    border="#e7d0da",
+    border_strong="#d9b9c7",
+    card_border="#e9d3dc",
+    text="#2b1a21",
+    text_muted="#6b525d",
+    text_faint="#9c8490",
+    accent="#cc4a7a",
+    accent_hover="#da6690",
+    accent_pressed="#b23b67",
+    accent_text="#ffffff",
+    accent_soft="rgba(204, 74, 122, 0.12)",
+    info="#4b7bd1",
+    info_soft="rgba(75, 123, 209, 0.11)",
+    success="#45925a",
+    success_soft="rgba(69, 146, 90, 0.12)",
+    warning="#bb7718",
+    warning_soft="rgba(187, 119, 24, 0.12)",
+    danger="#c93847",
+    danger_soft="rgba(201, 56, 71, 0.11)",
+    violet="#8d63d1",
+    violet_soft="rgba(141, 99, 209, 0.11)",
+    hero_start="#f8d9e4",
+    hero_end="#efe1f5",
+    brand_start="#f6d5e1",
+    brand_mid="#f9ecf1",
+    brand_end="#eedff4",
+    shadow="rgba(80, 20, 40, 0.08)",
+)
+PALETTES: dict[ThemeMode, Palette] = {
+    ThemeMode.DARK: DARK,
+    ThemeMode.LIGHT: LIGHT,
+    ThemeMode.FOREST: FOREST,
+    ThemeMode.CHERRY: CHERRY,
+}
 
 COLORS = replace(DARK)
 
@@ -140,7 +234,7 @@ def system_prefers_dark() -> bool:
 
 
 def resolve_mode(mode: str | ThemeMode | None) -> ThemeMode:
-    """Sombre ou clair : « Système » suit le réglage de Windows / macOS / du bureau."""
+    """Thème effectif : « Système » devient Sombre ou Clair selon le réglage de Windows / macOS / du bureau."""
     try:
         chosen = ThemeMode(mode or ThemeMode.SYSTEM)
     except ValueError:
@@ -153,7 +247,7 @@ def resolve_mode(mode: str | ThemeMode | None) -> ThemeMode:
 def use_palette(mode: str | ThemeMode | None) -> ThemeMode:
     """Remplace les valeurs de COLORS (même objet partout) par celles du thème choisi."""
     resolved = resolve_mode(mode)
-    source = DARK if resolved is ThemeMode.DARK else LIGHT
+    source = PALETTES[resolved]
     for field in fields(Palette):
         setattr(COLORS, field.name, getattr(source, field.name))
     _refresh_tones()

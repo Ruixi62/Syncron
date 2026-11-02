@@ -29,7 +29,16 @@ from syncron_client.tools.calendar.model import CATEGORIES, Event, events_on, mo
 from syncron_client.ui import icons
 from syncron_client.ui.format import WEEKDAYS_SHORT, long_date, month_title
 from syncron_client.ui.theme import COLORS
-from syncron_client.ui.widgets import Card, Chip, FlowWidget, SegmentedControl, button, icon_button, label
+from syncron_client.ui.widgets import (
+    Card,
+    Chip,
+    FlowWidget,
+    SegmentedControl,
+    button,
+    icon_button,
+    label,
+    plain_tooltip,
+)
 
 HEADER_HEIGHT = 24
 CELL_GAP = 4
@@ -184,7 +193,8 @@ class MonthView(QWidget):
             events = events_on(self._events, self._days[index]) if index is not None else []
             if events:
                 text = "\n".join(f"{e.time_text()} · {e.title}" for e in events)
-                QToolTip.showText(event.globalPos(), f"{long_date(self._days[index]).capitalize()}\n{text}", self)
+                tip = plain_tooltip(f"{long_date(self._days[index]).capitalize()}\n{text}")
+                QToolTip.showText(event.globalPos(), tip, self)
             else:
                 QToolTip.hideText()
             return True

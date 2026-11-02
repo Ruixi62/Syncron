@@ -28,7 +28,7 @@ class MailboxTool(Tool):
         name="Messagerie",
         description="Annonces de l'équipe et nouvelles du pays.",
         icon="mail",
-        version="4.5.0",
+        version="5.1.0",
         placement=Placement.MAIN,
         system="messages",
     )

@@ -40,13 +40,24 @@ class Settings(BaseSettings):
     auth_rate_limit: int = Field(30, ge=0, description="Requêtes de connexion par minute et par adresse (0 = illimité)")
     max_request_bytes: int = Field(10 * 1024 * 1024, ge=64 * 1024)
     max_hosted_image_bytes: int = Field(8 * 1024 * 1024, ge=64 * 1024, description="Image hébergée : poids maximal")
+    hosted_image_uploads_per_10_minutes: int = Field(30, ge=0, description="Envois d'images par membre (0 = illimité)")
     hosted_images_per_user: int = Field(200, ge=0, description="Images hébergées par membre (0 = illimité)")
+    ng_api_url: str = Field("https://publicapi.nationsglory.fr", description="API publique NationsGlory")
+    ng_api_key: SecretStr = Field(SecretStr(""), description="Clé de l'API NationsGlory (reste sur le serveur)")
+    ng_api_auth_header: str = Field("Authorization", pattern=r"^[A-Za-z0-9-]{1,40}$")
+    ng_api_auth_scheme: str = Field("Bearer", max_length=20, description="Préfixe de la clé (vide : clé seule)")
+    ng_server: str = Field("", pattern=r"^[a-z0-9_-]{0,32}$", description="Serveur NationsGlory du pays (blue…)")
+    ng_country: str = Field("", pattern=r"^[a-z0-9_-]{0,64}$", description="Identifiant du pays sur NationsGlory")
+    ng_cache_seconds: int = Field(300, ge=0, le=86_400)
+    ng_timeout_seconds: float = Field(10.0, gt=0, le=60)
     hosted_images_total_bytes: int = Field(
         2 * 1024 * 1024 * 1024, ge=0, description="Espace total des images hébergées (0 = illimité)"
     )
 
     @model_validator(mode="after")
     def _check(self) -> Settings:
+        if not self.ng_api_url.startswith("https://"):
+            raise ValueError("SYNCRON_NG_API_URL doit commencer par https:// (la clé y est envoyée).")
         if self.dev_login and self.env is Environment.PRODUCTION:
             raise ValueError("SYNCRON_DEV_LOGIN est interdit quand SYNCRON_ENV=production.")
         if self.env is Environment.PRODUCTION and not (

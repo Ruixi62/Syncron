@@ -21,7 +21,7 @@ def test_home_lists_country_tools_without_admin_and_hides_search(make_launcher, 
     shell = sign_in(make_launcher())
     window = shell.window
     window.show_page("home")
-    assert window._home.card_ids == ["craft", "research", "calendar", "converter", "images", "alerts"]
+    assert window._home.card_ids == ["craft", "research", "calendar", "members", "converter", "images", "alerts"]
     assert window._home._title.text() == "Empire du Levant"
     assert "outils internes de Empire du Levant" in window._home._intro.text()
     assert not window.top_bar.search_visible()
@@ -177,7 +177,7 @@ def test_editor_only_sees_the_systems_entrusted_to_them(make_launcher, tmp_path)
     launcher._signed_in(launcher.api.dev_login("planner", "editor", ["calendar"]))
     shell = launcher.shell
     admin = shell.registry.get("admin")
-    assert [group.title for group in admin.groups()] == ["Général", "Calendrier"]
+    assert [group.title for group in admin.groups()] == ["Vue d'ensemble", "Calendrier", "Journal"]
     page = admin_section(shell, "admin.overview")
     assert list(page.cards) == ["calendar"] and page.accounts.isHidden()
     assert "admin.users" not in shell.registry.get("admin").page.section_keys
@@ -437,3 +437,123 @@ def test_hidden_heart_opens_the_love_page(make_launcher, tmp_path):
     assert page.canvas.floating and page.canvas.beat() >= 1.0
     page.backRequested.emit()
     assert window.current_page == "settings" and not page.canvas.running
+
+
+# -- 5.1 ----------------------------------------------------------------------------------------
+
+
+def test_profile_is_edited_in_settings_and_listed_in_the_directory(make_launcher, tmp_path):
+    author = member(make_launcher, tmp_path, "auteur")
+    window = author.window
+    window.open_in_tool("settings", "profile")
+    settings_page = window._settings_page
+    assert settings_page.current_section == "profile"
+    profile = settings_page.profile
+    profile.nickname.setText("Auteur_42")
+    profile.title_field.setText("Ministre de l'Industrie")
+    profile.availability.setText("Le soir")
+    profile.bio.setPlainText("Je construis les usines du pays.")
+    assert profile.specialties.add("Ingénieur") and not profile.specialties.add("ingénieur")
+    profile.specialties.add("Mineur")
+    profile.specialties.remove("Mineur")
+    profile.color.set_color("violet")
+    profile.color.changed.emit("violet")
+    assert profile.is_dirty() and profile.preview.member.title == "Ministre de l'Industrie"
+    profile.save()
+    assert not profile.is_dirty() and profile.member.nickname == "Auteur_42"
+    assert profile.member.specialties == ("Ingénieur",)
+
+    reader = member(make_launcher, tmp_path, "lecteur")
+    reader.window.show_page("members")
+    directory = reader.registry.get("members").page
+    names = {m.nickname: m for m in directory.members}
+    assert names["Auteur_42"].title == "Ministre de l'Industrie" and names["Auteur_42"].color == "violet"
+    directory.search.setText("industrie")
+    assert len(directory.cards) == 1
+    card = next(iter(directory.cards.values()))
+    card.clicked.emit(card.member.id)
+    assert directory.detail is not None and directory.detail.member.bio == "Je construis les usines du pays."
+    directory.search.setText("zzz")
+    assert not directory.cards and "Personne" in directory.empty.body_label.text()
+
+
+def test_admin_navigation_has_tabs_and_subtabs(make_launcher, tmp_path):
+    shell = sign_in(make_launcher(user_dir=tmp_path / "chef"), "chef", "admin")
+    shell.window.show_page("admin")
+    page = shell.registry.get("admin").page
+    assert page.group_keys == [
+        "overview",
+        "accounts",
+        "craft",
+        "research",
+        "calendar",
+        "messages",
+        "nationsglory",
+        "audit",
+    ]
+    page.show_group("craft")
+    assert page.current_key == "craft.items" and page.subtabs.isVisible()
+    page.subtabs.set_current_index(2)
+    assert page.current_key == "craft.skills"
+    page.show_group("research")
+    page.show_group("craft")
+    assert page.current_key == "craft.items"
+    page.show_section("craft.transfer")
+    page.show_group("craft")
+    assert page.current_key == "craft.transfer" and page.tabs["craft"].isChecked()
+    overview = page.show_section("admin.overview")
+    overview.manageRequested.emit("calendar")
+    assert page.current_group == "calendar" and not page.subtabs.isVisible()
+
+    view = page.show_group("nationsglory")
+    assert view.status is not None and not view.status["configured"]
+    assert not view.call_button.isEnabled() and view.setup_hint.isVisibleTo(view)
+    view.kind.setCurrentIndex(view.kind.findData("user"))
+    view.username.setText("MisterSand")
+    assert view.payload()["kind"] == "user" and view.payload()["username"] == "MisterSand"
+    assert not view.server.isVisibleTo(view)
+
+
+def test_images_tool_explains_an_outdated_server(make_launcher, tmp_path):
+    from syncron_client.api.client import _error_from
+
+    shell = member(make_launcher, tmp_path)
+    session = shell.host.session
+    session.set_meta({**session._meta, "systems": {"craft": "Craft"}, "version": "4.4.0"})
+    shell.window.show_page("images")
+    page = shell.registry.get("images").page
+    assert "4.4.0" in page.empty.body_label.text() and not page.upload_button.isEnabled()
+    shell.window.show_page("members")
+    assert "5.1.0" in shell.registry.get("members").page.empty.body_label.text()
+
+    import httpx
+
+    error = _error_from(httpx.Response(404, json={"detail": "Not Found"}))
+    assert "pas encore sur le serveur" in error.message
+    assert _error_from(httpx.Response(404, json={"detail": "Image introuvable."})).message == "Image introuvable."
+
+
+def test_forest_and_cherry_themes(make_launcher, tmp_path):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtWidgets import QApplication
+
+    from syncron_client.ui.theme import CHERRY, COLORS, FOREST, apply_theme
+
+    for widget in QApplication.topLevelWidgets():
+        if not widget.isVisible():
+            widget.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    launcher = make_launcher(user_dir=tmp_path / "theme")
+    shell = sign_in(launcher, "theme", "player")
+    picker = shell.window._settings_page.theme_choice
+    assert [tile.mode.value for tile in picker.tiles] == ["system", "dark", "light", "forest", "cherry"]
+    try:
+        picker.set_current_index(3)
+        QApplication.processEvents()
+        assert COLORS.accent == FOREST.accent and launcher.settings.get("theme") == "forest"
+        launcher.shell.window._settings_page.theme_choice.set_current_index(4)
+        QApplication.processEvents()
+        assert COLORS.bg == CHERRY.bg and not COLORS.dark
+        assert launcher.shell.window._settings_page.theme_choice.current_index() == 4
+    finally:
+        apply_theme(QApplication.instance(), "dark")

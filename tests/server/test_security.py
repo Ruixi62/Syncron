@@ -76,3 +76,37 @@ async def test_role_change_applies_immediately_to_existing_tokens(client, admin)
     await client.patch(f"/api/v1/admin/users/{users[0]['id']}", json={"role": "player"}, headers=admin)
     refused = await client.post("/api/v1/admin/calendar/events", json={"title": "x"}, headers=editor)
     assert refused.status_code == 403
+
+
+# -- 5.1 ----------------------------------------------------------------------------------------
+
+
+async def test_image_uploads_are_rate_limited_per_member(client, settings, player):
+    from syncron_server.protection import SlidingWindow
+
+    client._transport.app.state.image_uploads = SlidingWindow(2, 600)
+    buffer = io.BytesIO()
+    Image.new("RGBA", (8, 8), (10, 20, 30, 255)).save(buffer, format="PNG")
+    files = {"file": ("x.png", buffer.getvalue(), "image/png")}
+    statuses = [(await client.post("/api/v1/images", files=files, headers=player)).status_code for _ in range(3)]
+    assert statuses == [201, 201, 429]
+
+
+def test_discord_avatar_hash_is_validated():
+    from syncron_server.routers.auth import AVATAR_HASH
+
+    assert AVATAR_HASH.match("a_" + "0123456789abcdef" * 2) and AVATAR_HASH.match("f" * 32)
+    for bad in ("../../x", "f" * 31, "F" * 32, "abc?size=1", "f" * 32 + "/x"):
+        assert not AVATAR_HASH.match(bad)
+
+
+def test_window_limits_and_trusted_proxies():
+    from syncron_server.__main__ import TRUSTED_PROXIES
+    from syncron_server.protection import SlidingWindow
+
+    now = [0.0]
+    window = SlidingWindow(2, 60, clock=lambda: now[0])
+    assert window.allow("a") and window.allow("a") and not window.allow("a") and window.allow("b")
+    now[0] = 61
+    assert window.allow("a")
+    assert "*" not in TRUSTED_PROXIES and "172.16.0.0/12" in TRUSTED_PROXIES

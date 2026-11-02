@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,15 +16,30 @@ from syncron_server.catalog_store import CatalogValidationError
 from syncron_server.config import Settings
 from syncron_server.db import Database
 from syncron_server.discord import DiscordOAuth, DiscordProvider
-from syncron_server.protection import AuthRateLimit, BodySizeLimit
-from syncron_server.routers import admin, auth, calendar, catalog, craft_admin, images, inbox, research
+from syncron_server.nationsglory import NationsGloryClient
+from syncron_server.protection import AuthRateLimit, BodySizeLimit, SlidingWindow
+from syncron_server.routers import (
+    admin,
+    auth,
+    calendar,
+    catalog,
+    craft_admin,
+    images,
+    inbox,
+    members,
+    nationsglory,
+    research,
+)
 from syncron_server.schemas import IssueOut
+
+NG_CALLS_PER_MINUTE = 20  # appels directs à l'API NationsGlory, par compte (le cache ne compte pas)
 
 
 def create_app(
     settings: Settings | None = None,
     database: Database | None = None,
     discord: DiscordProvider | None = None,
+    nationsglory_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     database = database or Database(settings.database_url)
@@ -46,6 +62,17 @@ def create_app(
         settings.discord_client_id, settings.discord_client_secret.get_secret_value()
     )
     app.state.catalog_cache = catalog.CatalogCache()
+    app.state.image_uploads = SlidingWindow(settings.hosted_image_uploads_per_10_minutes, 600)
+    app.state.nationsglory_calls = SlidingWindow(NG_CALLS_PER_MINUTE, 60)
+    app.state.nationsglory = NationsGloryClient(
+        settings.ng_api_url,
+        settings.ng_api_key.get_secret_value(),
+        settings.ng_api_auth_header,
+        settings.ng_api_auth_scheme,
+        settings.ng_timeout_seconds,
+        settings.ng_cache_seconds,
+        transport=nationsglory_transport,
+    )
 
     @app.exception_handler(CatalogValidationError)
     async def _validation(_request: Request, exc: CatalogValidationError) -> JSONResponse:
@@ -67,10 +94,11 @@ def create_app(
     app.include_router(catalog.router)
     app.include_router(admin.router)
     app.include_router(craft_admin.router)
-    for module in (research, calendar, inbox):
+    for module in (research, calendar, inbox, nationsglory):
         app.include_router(module.router)
         app.include_router(module.admin_router)
     app.include_router(images.router)
+    app.include_router(members.router)
     settings.media_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/media", StaticFiles(directory=settings.media_dir), name="media")
     return app

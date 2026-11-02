@@ -10,7 +10,7 @@ from syncron_client.platform.tool import Placement, StatusLevel, ToolStatus
 from syncron_client.ui import icons
 from syncron_client.ui.brand import logo_pixmap
 from syncron_client.ui.theme import COLORS
-from syncron_client.ui.widgets import ElidedLabel, icon_button, label
+from syncron_client.ui.widgets import ElidedLabel, icon_button, label, plain_tooltip
 from syncron_core import APP_DISPLAY_NAME, __version__
 
 HOME_ID = "home"
@@ -46,7 +46,7 @@ class NavButton(QPushButton):
             return
         if status.level is StatusLevel.OK or not status.badge:
             self._badge.hide()
-            self.setToolTip(status.message)
+            self.setToolTip(plain_tooltip(status.message))
             return
         colors = {StatusLevel.ERROR: COLORS.danger, StatusLevel.WARNING: COLORS.warning}
         color = colors.get(status.level, COLORS.accent)
@@ -55,7 +55,7 @@ class NavButton(QPushButton):
         self._badge.setText(status.badge)
         self._badge.adjustSize()
         self._badge.show()
-        self.setToolTip(status.message)
+        self.setToolTip(plain_tooltip(status.message))
         self._place_badge()
 
     def badge_text(self) -> str:
@@ -69,20 +69,22 @@ class NavButton(QPushButton):
         self._badge.move(self.width() - self._badge.width() - 10, (self.height() - self._badge.height()) // 2)
 
 
-def initials_avatar(name: str, size: int) -> QPixmap:
+def initials_avatar(name: str, size: int, color: str | None = None) -> QPixmap:
     pixmap = QPixmap(size * 2, size * 2)
     pixmap.setDevicePixelRatio(2)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QColor(COLORS.accent_soft.replace("0.13", "0.35")))
+    tint = QColor(color or COLORS.accent)
+    tint.setAlpha(80)
+    painter.setBrush(tint)
     painter.setPen(Qt.PenStyle.NoPen)
     painter.drawEllipse(QRectF(0, 0, size, size))
     font = QFont()
     font.setBold(True)
     font.setPixelSize(round(size * 0.42))
     painter.setFont(font)
-    painter.setPen(QColor(COLORS.accent))
+    painter.setPen(QColor(color or COLORS.accent))
     letters = "".join(word[0] for word in name.split()[:2]).upper() or "?"
     painter.drawText(QRectF(0, 0, size, size), Qt.AlignmentFlag.AlignCenter, letters[:2])
     painter.end()

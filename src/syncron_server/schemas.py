@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -455,3 +455,93 @@ class HostedImagesOut(BaseModel):
 class HostedImagePatch(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     title: str = Field(max_length=120)
+
+
+# -- Profils et annuaire --------------------------------------------------------------------
+
+ProfileColor = Literal["teal", "blue", "violet", "pink", "red", "orange", "yellow", "green"]
+
+
+class ProfileIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    nickname: str = Field("", max_length=16, pattern=r"^([A-Za-z0-9_]{3,16})?$")
+    title: str = Field("", max_length=60)
+    bio: str = Field("", max_length=600)
+    specialties: list[str] = Field(default_factory=list, max_length=8)
+    availability: str = Field("", max_length=80)
+    color: ProfileColor = "teal"
+    show_discord: bool = True
+
+    @model_validator(mode="after")
+    def _clean(self) -> ProfileIn:
+        seen: dict[str, str] = {}
+        for raw in self.specialties:
+            tag = " ".join(raw.split())[:24]
+            if tag and tag.casefold() not in seen:
+                seen[tag.casefold()] = tag
+        self.specialties = list(seen.values())
+        self.title = " ".join(self.title.split())
+        self.availability = " ".join(self.availability.split())
+        return self
+
+
+class MemberOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    discord_username: str | None
+    avatar_url: str | None
+    role: Role
+    nickname: str
+    title: str
+    bio: str
+    specialties: list[str]
+    availability: str
+    color: ProfileColor
+    show_discord: bool
+    joined_at: datetime
+    last_seen_at: datetime | None
+    updated_at: datetime | None
+
+
+# -- NationsGlory --------------------------------------------------------------------------
+
+NationsGloryKind = Literal["playercount", "country", "countries", "notations", "mmr", "hdv", "planning", "user"]
+
+
+class NationsGloryFetchIn(BaseModel):
+    """Appel à l'API NationsGlory. Paramètres vides : ceux du pays (`SYNCRON_NG_SERVER`, `SYNCRON_NG_COUNTRY`)."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+    kind: NationsGloryKind
+    server: str = Field("", pattern=r"^[a-z0-9_-]{0,32}$")
+    country: str = Field("", pattern=r"^[a-z0-9_-]{0,64}$")
+    username: str = Field("", pattern=r"^[A-Za-z0-9_]{0,16}$")
+    week: int | None = Field(None, ge=0, le=999_999)
+    month: int | None = Field(None, ge=1, le=12)
+    year: int | None = Field(None, ge=2010, le=2100)
+    refresh: bool = False
+
+
+class NationsGlorySnapshotOut(BaseModel):
+    id: int
+    kind: str
+    target: str
+    status: int
+    error: str
+    size_bytes: int
+    duration_ms: int
+    fetched_at: datetime
+    from_cache: bool = False
+    payload: Any | None = None
+
+
+class NationsGloryStatusOut(BaseModel):
+    configured: bool
+    api_url: str
+    auth_header: str
+    key_set: bool
+    server: str
+    country: str
+    cache_seconds: int
+    kinds: list[str]
+    latest: list[NationsGlorySnapshotOut]

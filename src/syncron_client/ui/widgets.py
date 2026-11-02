@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from collections.abc import Sequence
 
 from PySide6.QtCore import QMargins, QPoint, QRect, QSize, Qt, Signal
@@ -28,6 +29,14 @@ from PySide6.QtWidgets import (
 
 from syncron_client.ui import icons
 from syncron_client.ui.theme import COLORS, TONES
+
+
+def plain_tooltip(text: str) -> str:
+    """Info-bulle affichée telle quelle : Qt interprète le HTML d'une info-bulle qui en contient
+    (« <img src=…> », liens…), y compris dans un nom ou une description saisis par un membre."""
+    if not text:
+        return ""
+    return "<qt>" + html.escape(text).replace("\n", "<br>") + "</qt>"
 
 
 def label(text: str = "", role: str | None = None, wrap: bool = False) -> QLabel:
@@ -71,7 +80,7 @@ class ElidedLabel(QLabel):
     def _refresh(self) -> None:
         elided = self.fontMetrics().elidedText(self._full_text, Qt.TextElideMode.ElideRight, max(self.width(), 40))
         super().setText(elided)
-        self.setToolTip(self._full_text if elided != self._full_text else "")
+        self.setToolTip(plain_tooltip(self._full_text) if elided != self._full_text else "")
 
 
 def button(text: str, icon_name: str | None = None, variant: str | None = None) -> QPushButton:
@@ -446,6 +455,9 @@ class FlowLayout(QLayout):
             if item.widget() and item.widget().isHidden():
                 continue
             hint = item.sizeHint()
+            widget = item.widget()
+            if widget is not None and widget.hasHeightForWidth():
+                hint = QSize(hint.width(), max(hint.height(), widget.heightForWidth(hint.width())))
             if x + hint.width() > rect.right() + 1 and line_height > 0:
                 x, y = rect.x(), y + line_height + self._spacing
                 line_height = 0

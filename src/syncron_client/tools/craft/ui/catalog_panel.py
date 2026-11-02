@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 from syncron_client.ui import icons
 from syncron_client.ui.item_icons import IconProvider
 from syncron_client.ui.theme import COLORS
-from syncron_client.ui.widgets import Card, SearchField, SegmentedControl, label
+from syncron_client.ui.widgets import Card, SearchField, SegmentedControl, label, plain_tooltip
 from syncron_core.catalog_service import CatalogService, matches
 from syncron_core.duration import format_duration
 from syncron_core.models.item import Item, ItemType
@@ -91,7 +91,7 @@ class CatalogModel(QAbstractListModel):
             tip = f"{item.name}\nid : {item.id}"
             if item.id in self._broken:
                 tip += "\n⚠ Erreur dans les données"
-            return tip
+            return plain_tooltip(tip)
         return None
 
     def _subtitle(self, item: Item) -> str:

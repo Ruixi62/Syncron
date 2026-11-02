@@ -28,6 +28,9 @@ class CatalogResponse:
     not_modified: bool
 
 
+TRUSTED_DOWNLOADS = ("https://cdn.discordapp.com/avatars/",)
+
+
 class ApiClient:
     def __init__(self, base_url: str, transport: httpx.BaseTransport | None = None) -> None:
         self.base_url = base_url.rstrip("/")
@@ -111,11 +114,43 @@ class ApiClient:
         return CatalogResponse(response.json(), response.headers.get("ETag"), False)
 
     def download(self, url: str) -> bytes:
+        """Fichier du serveur Syncron (« /media/… ») ou avatar Discord ; toute autre adresse est refusée :
+        un serveur compromis ne peut pas faire télécharger n'importe quoi au client."""
+        if not (url.startswith("/") and not url.startswith("//")) and not url.startswith(TRUSTED_DOWNLOADS):
+            raise ApiError("Adresse de téléchargement refusée.", 0)
         return self._request("GET", url, auth=False).content
 
     def absolute_url(self, url: str) -> str:
         """Lien complet d'un fichier du serveur (« https://…/media/images/… »), à partager."""
         return url if url.startswith(("http://", "https://")) else self.base_url + url
+
+    # -- profils et membres ------------------------------------------------------------------
+
+    def profile(self) -> dict[str, Any]:
+        return self._json("GET", "/api/v1/profile")
+
+    def save_profile(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._json("PUT", "/api/v1/profile", json=payload)
+
+    def members(self) -> list[dict[str, Any]]:
+        return self._json("GET", "/api/v1/members")
+
+    # -- NationsGlory --------------------------------------------------------------------------
+
+    def nationsglory_status(self) -> dict[str, Any]:
+        return self._json("GET", "/api/v1/admin/nationsglory")
+
+    def nationsglory_fetch(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._json("POST", "/api/v1/admin/nationsglory/fetch", json=payload)
+
+    def nationsglory_snapshots(self, kind: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"limit": limit}
+        if kind:
+            params["kind"] = kind
+        return self._json("GET", "/api/v1/admin/nationsglory/snapshots", params=params)
+
+    def nationsglory_snapshot(self, snapshot_id: int) -> dict[str, Any]:
+        return self._json("GET", f"/api/v1/admin/nationsglory/snapshots/{snapshot_id}")
 
     # -- images ------------------------------------------------------------------------------
 
@@ -310,7 +345,12 @@ def _error_from(response: httpx.Response) -> ApiError:
         payload = None
     if isinstance(payload, dict):
         detail = payload.get("detail")
-        if isinstance(detail, str):
+        if response.status_code == 404 and detail == "Not Found":
+            message = (
+                "Cette fonction n'existe pas encore sur le serveur du pays : il n'est sans doute pas à jour. "
+                "Préviens l'équipe."
+            )
+        elif isinstance(detail, str):
             message = detail
         elif isinstance(detail, list) and detail:
             message = "Données refusées : " + "; ".join(
