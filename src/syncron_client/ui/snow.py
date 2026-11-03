@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QPainter, QPaintEvent
 from PySide6.QtWidgets import QWidget
 
 FRAME_MS = 40
-FLAKES_PER_100PX = 3
+FLAKES_PER_100PX = 5.0
 
 
 @dataclass(slots=True)
@@ -27,8 +27,9 @@ class Flake:
 class Snowfall(QWidget):
     """Calque enfant de `host`, à sa taille, qui ne capte pas la souris ; anime seulement quand il est visible."""
 
-    def __init__(self, host: QWidget, seed: int | None = None) -> None:
+    def __init__(self, host: QWidget, seed: int | None = None, density: float = FLAKES_PER_100PX) -> None:
         super().__init__(host)
+        self._density = density
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self._random = random.Random(seed)
@@ -60,7 +61,7 @@ class Snowfall(QWidget):
         return False
 
     def _target(self) -> int:
-        return max(8, self.width() * FLAKES_PER_100PX // 100)
+        return max(8, int(self.width() * self._density / 100 * max(1, self.height() / 160)))
 
     def _fill(self) -> None:
         while len(self._flakes) < self._target():
@@ -95,4 +96,84 @@ class Snowfall(QWidget):
             color.setAlphaF(0.35 + flake.radius / 8)
             painter.setBrush(color)
             painter.drawEllipse(QPointF(flake.x, flake.y), flake.radius, flake.radius)
+        painter.end()
+
+
+GARLAND_COLORS = ("#ff4b4b", "#ffd166", "#4cd98a", "#5fb4ff", "#ff7bd1")
+GARLAND_HEIGHT = 24
+SPAN = 150
+BULB_GAP = 26
+TWINKLE_MS = 650
+
+
+class Garland(QWidget):
+    """Guirlande lumineuse : un fil qui pend entre des crochets, des ampoules qui clignotent en alternance."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFixedHeight(GARLAND_HEIGHT)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._phase = 0
+        self._timer = QTimer(self)
+        self._timer.setInterval(TWINKLE_MS)
+        self._timer.timeout.connect(self.twinkle)
+
+    @property
+    def phase(self) -> int:
+        return self._phase
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._timer.start()
+
+    def hideEvent(self, event) -> None:
+        self._timer.stop()
+        super().hideEvent(event)
+
+    def twinkle(self) -> None:
+        self._phase = (self._phase + 1) % 2
+        self.update()
+
+    def bulbs(self) -> list[tuple[QPointF, str, bool]]:
+        """Position, couleur et état (allumée) de chaque ampoule."""
+        result = []
+        x, index = BULB_GAP / 2, 0
+        while x < self.width():
+            offset = x % SPAN
+            sag = 4 * (offset / SPAN) * (1 - offset / SPAN)
+            point = QPointF(x, 4 + sag * 9)
+            result.append((point, GARLAND_COLORS[index % len(GARLAND_COLORS)], (index + self._phase) % 2 == 0))
+            x += BULB_GAP
+            index += 1
+        return result
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        wire = QColor("#2f4a39")
+        painter.setPen(wire)
+        x = 0
+        while x < self.width():
+            steps = 20
+            previous = QPointF(x, 3)
+            for step in range(1, steps + 1):
+                t = step / steps
+                point = QPointF(x + SPAN * t, 3 + 4 * t * (1 - t) * 9)
+                painter.drawLine(previous, point)
+                previous = point
+            x += SPAN
+        painter.setPen(Qt.PenStyle.NoPen)
+        for point, color, lit in self.bulbs():
+            bulb = QColor(color)
+            if lit:
+                glow = QColor(color)
+                glow.setAlphaF(0.28)
+                painter.setBrush(glow)
+                painter.drawEllipse(QPointF(point.x(), point.y() + 6), 8, 8)
+            else:
+                bulb = bulb.darker(220)
+            painter.setBrush(QColor("#5a6b5f"))
+            painter.drawRect(int(point.x()) - 2, int(point.y()), 4, 3)
+            painter.setBrush(bulb)
+            painter.drawEllipse(QPointF(point.x(), point.y() + 7), 4, 5.5)
         painter.end()

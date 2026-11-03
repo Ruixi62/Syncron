@@ -88,7 +88,7 @@ class LiveServer:
                 self.db_name,
             )
         )
-        self.settings.min_client_version = "5.2.0"
+        self.settings.min_client_version = "5.2.1"
         self.settings.nation_name = ""
 
     def stop(self) -> None:

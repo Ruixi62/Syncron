@@ -28,6 +28,8 @@ from syncron_client.shell.sidebar import HOME_ID, SETTINGS_ID, Sidebar
 from syncron_client.shell.toast import Toast
 from syncron_client.shell.top_bar import TopBar
 from syncron_client.ui.brand import app_icon
+from syncron_client.ui.snow import Garland, Snowfall
+from syncron_client.ui.theme import COLORS
 from syncron_core import APP_DISPLAY_NAME
 
 MIN_SIZE = (1120, 720)
@@ -65,6 +67,9 @@ class ShellWindow(QMainWindow):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
+        self.garland = Garland() if COLORS.festive else None
+        if self.garland is not None:
+            right_layout.addWidget(self.garland)
         right_layout.addWidget(self._top_bar)
         right_layout.addWidget(self._stack, 1)
         central = QWidget()
@@ -74,6 +79,7 @@ class ShellWindow(QMainWindow):
         layout.addWidget(self._sidebar)
         layout.addWidget(right, 1)
         self.setCentralWidget(central)
+        self.sidebar_snow = Snowfall(self._sidebar, density=1.5) if COLORS.festive else None
 
         self._home = HomePage(registry, host)
         self._add_page(HOME_ID, self._home)

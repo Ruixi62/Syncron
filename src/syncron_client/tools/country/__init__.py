@@ -11,7 +11,6 @@ from typing import Any
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from syncron_client.api.errors import ApiError
 from syncron_client.platform.hub import HubTool
 from syncron_client.platform.tool import ToolInfo
 from syncron_client.tools.bank import money
@@ -132,16 +131,12 @@ class CountryHome(QScrollArea):
         if members is not None:
             with_profile = sum(1 for m in members if m.get("nickname") or m.get("title") or m.get("bio"))
             self.cards["members"].show_data(str(len(members)), f"membre(s), dont {with_profile} avec un profil rempli")
-        elif summary.get("members_unavailable"):
-            self.cards["members"].show_data("—", "L'annuaire arrive avec le serveur 5.1.")
         bank = summary.get("bank")
         if bank is not None:
             self.cards["bank"].show_data(
                 money(int(bank["balance"])),
                 f"+{money(int(bank['income_30_days']))} et −{money(int(bank['expenses_30_days']))} sur 30 jours",
             )
-        elif summary.get("bank_unavailable"):
-            self.cards["bank"].show_data("—", "La banque arrive avec le serveur 5.2.")
 
 
 class CountryTool(HubTool):
@@ -151,7 +146,7 @@ class CountryTool(HubTool):
         name="Pays",
         description="La page du pays : avancement de la R&D, membres et banque.",
         icon="flag",
-        version="5.2.0",
+        version="5.2.1",
     )
 
     def __init__(self) -> None:
@@ -192,23 +187,9 @@ class CountryTool(HubTool):
         if not session.online:
             return
         api = self._host.api
-        members_ready = session.server_at_least("5.1.0")
-        bank_ready = session.server_at_least("5.2.0")
 
         def load() -> dict[str, Any]:
-            summary: dict[str, Any] = {"research": parse_domains(api.research())}
-            if members_ready:
-                summary["members"] = api.members()
-            else:
-                summary["members_unavailable"] = True
-            if bank_ready:
-                try:
-                    summary["bank"] = api.bank()
-                except ApiError:
-                    summary["bank_unavailable"] = True
-            else:
-                summary["bank_unavailable"] = True
-            return summary
+            return {"research": parse_domains(api.research()), "members": api.members(), "bank": api.bank()}
 
         def done(summary: dict[str, Any]) -> None:
             self.summary = summary

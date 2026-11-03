@@ -514,19 +514,10 @@ def test_admin_navigation_has_tabs_and_subtabs(make_launcher, tmp_path):
     assert not view.server.isVisibleTo(view)
 
 
-def test_images_tool_explains_an_outdated_server(make_launcher, tmp_path):
-    from syncron_client.api.client import _error_from
-
-    shell = member(make_launcher, tmp_path)
-    session = shell.host.session
-    session.set_meta({**session._meta, "systems": {"craft": "Craft"}, "version": "4.4.0"})
-    shell.window.show_page("images")
-    page = shell.registry.get("images").page
-    assert "4.4.0" in page.empty.body_label.text() and not page.upload_button.isEnabled()
-    shell.window.show_page("members")
-    assert "5.1.0" in shell.registry.get("members").page.empty.body_label.text()
-
+def test_missing_server_route_gets_a_clear_message():
     import httpx
+
+    from syncron_client.api.client import _error_from
 
     error = _error_from(httpx.Response(404, json={"detail": "Not Found"}))
     assert "pas encore sur le serveur" in error.message
@@ -650,22 +641,20 @@ def test_christmas_theme_snows_on_the_home_page(make_launcher, tmp_path):
         before = [flake.y for flake in snow.flakes]
         snow.advance()
         assert [flake.y for flake in snow.flakes] != before
+        garland = window.garland
+        assert garland is not None and window.sidebar_snow is not None
+        lit = [on for _point, _color, on in garland.bulbs()]
+        garland.twinkle()
+        assert lit and [on for _point, _color, on in garland.bulbs()] == [not on for on in lit]
+        assert window._home._greeting.text().startswith("JOYEUX NOËL")
     finally:
         apply_theme(QApplication.instance(), "dark")
 
 
-def test_empty_state_text_reserves_its_height_and_profile_needs_a_recent_server(make_launcher, tmp_path):
+def test_empty_state_text_reserves_its_height(qapp):
     from syncron_client.ui.widgets import EmptyState
 
     empty = EmptyState("users", "Aucun membre", "")
     short = empty.body_label.minimumHeight()
     empty.body_label.setText("Un texte assez long pour tenir sur plusieurs lignes sous le titre " * 3)
     assert empty.body_label.minimumHeight() > short * 2
-
-    shell = member(make_launcher, tmp_path)
-    session = shell.host.session
-    session.set_meta({**session._meta, "version": "4.5.0"})
-    shell.window.open_in_tool("settings", "profile")
-    profile = shell.window._settings_page.profile
-    assert "5.1.0" in profile.offline_note.text() and not profile.save_button.isEnabled()
-    assert profile.banner.isHidden()

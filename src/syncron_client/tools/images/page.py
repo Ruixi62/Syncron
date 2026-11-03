@@ -114,7 +114,6 @@ class ImagesPage(QWidget):
         self._cards: dict[str, ImageCard] = {}
         self._thumbnails: dict[str, Path] = {}
         self._online = True
-        self._unavailable: str | None = None
 
         self.scope = SegmentedControl([("Toutes", None), ("Les miennes", None)])
         self.scope.currentChanged.connect(lambda index: self.filterChanged.emit(index == 1))
@@ -179,20 +178,7 @@ class ImagesPage(QWidget):
 
     def set_online(self, online: bool) -> None:
         self._online = online
-        self._unavailable = None
         self.upload_button.setEnabled(online)
-        self._render()
-
-    def set_unavailable(self, server_version: str) -> None:
-        """Serveur trop ancien : pas de route d'envoi. On le dit au lieu d'afficher « Not Found »."""
-        version = f" (version {server_version})" if server_version else ""
-        self._unavailable = (
-            f"Le serveur du pays{version} n'a pas encore l'hébergement d'images. "
-            "Préviens l'équipe : il faut mettre le serveur à jour (git pull puis docker compose up -d --build)."
-        )
-        self._images = []
-        self.upload_button.setEnabled(False)
-        self.quota.clear()
         self._render()
 
     def set_images(self, images: list[HostedImage], mine_count: int, limit: int) -> None:
@@ -219,7 +205,7 @@ class ImagesPage(QWidget):
 
     def receive(self, mime: QMimeData | None) -> bool:
         """Fichiers images, ou image copiée (capture d'écran) : transmis pour envoi."""
-        if mime is None or not self._online or self._unavailable:
+        if mime is None or not self._online:
             return False
         files = [Path(url.toLocalFile()) for url in mime.urls() if url.isLocalFile()]
         files = [path for path in files if path.suffix.lower() in IMAGE_SUFFIXES]
@@ -240,7 +226,7 @@ class ImagesPage(QWidget):
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         mime = event.mimeData()
         has_files = any(Path(u.toLocalFile()).suffix.lower() in IMAGE_SUFFIXES for u in mime.urls())
-        if self._online and not self._unavailable and (has_files or mime.hasImage()):
+        if self._online and (has_files or mime.hasImage()):
             event.acceptProposedAction()
 
     def dropEvent(self, event: QDropEvent) -> None:
@@ -263,9 +249,7 @@ class ImagesPage(QWidget):
             self.grid.add(card)
         self.scroll.setVisible(bool(shown))
         self.empty.setVisible(not shown)
-        if self._unavailable:
-            self.empty.body_label.setText(self._unavailable)
-        elif not self._online:
+        if not self._online:
             self.empty.body_label.setText("Hors ligne : la galerie revient dès la reconnexion.")
         elif query and self._images:
             self.empty.body_label.setText("Aucune image ne correspond à cette recherche.")

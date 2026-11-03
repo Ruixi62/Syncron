@@ -34,7 +34,7 @@ class ImagesTool(Tool):
         name="Images",
         description="Héberge tes images sur le serveur du pays et partage leur lien, sur Discord ou ailleurs.",
         icon="image",
-        version="5.2.0",
+        version="5.2.1",
         system="images",
     )
 
@@ -82,19 +82,11 @@ class ImagesTool(Tool):
 
     # -- galerie ----------------------------------------------------------------------------
 
-    @property
-    def available(self) -> bool:
-        """Le serveur du pays propose l'hébergement d'images (serveur 4.5 ou plus récent)."""
-        return self._host.session.has_system(self.info.system)
-
     def refresh(self) -> None:
-        session = self._host.session
-        online = session.online
+        online = self._host.session.online
         if self._page is not None:
             self._page.set_online(online)
-            if online and not self.available:
-                self._page.set_unavailable(session.server_version)
-        if not online or not self.available:
+        if not online:
             return
         mine = self._page.mine_only if self._page is not None else False
 

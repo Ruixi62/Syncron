@@ -22,7 +22,6 @@ from syncron_client.ui.theme import COLORS
 from syncron_client.ui.widgets import EmptyState, FlowWidget, SearchField, button, label
 
 CACHE_FILE = "members.json"
-MIN_SERVER = "5.1.0"
 CARD_WIDTH = 300
 
 
@@ -36,7 +35,6 @@ class MembersPage(QWidget):
         self._avatars: dict[str, QPixmap] = {}
         self.cards: dict[str, MemberCard] = {}
         self.selected: str | None = None
-        self._unavailable = ""
 
         self.search = SearchField("Rechercher : nom, pseudo, grade, spécialité…")
         self.search.textChanged.connect(self._render)
@@ -92,14 +90,9 @@ class MembersPage(QWidget):
 
     def set_members(self, members: list[Member]) -> None:
         self._members = members
-        self._unavailable = ""
         self._render()
         if self.selected and any(m.id == self.selected for m in members):
             self.select(self.selected)
-
-    def set_unavailable(self, text: str) -> None:
-        self._unavailable = text
-        self._render()
 
     def set_avatar(self, member_id: str, pixmap: QPixmap) -> None:
         self._avatars[member_id] = pixmap
@@ -140,9 +133,7 @@ class MembersPage(QWidget):
         self.count.setText(f"{len(shown)} / {total} membre(s)" if query else f"{total} membre(s)")
         self.scroll.setVisible(bool(shown))
         self.empty.setVisible(not shown)
-        if self._unavailable and not self._members:
-            self.empty.body_label.setText(self._unavailable)
-        elif query and self._members:
+        if query and self._members:
             self.empty.body_label.setText("Personne ne correspond à cette recherche.")
         else:
             self.empty.body_label.setText("L'annuaire se remplit à mesure que les membres se connectent.")
@@ -154,7 +145,7 @@ class MembersTool(Tool):
         name="Membres",
         description="L'annuaire du pays : qui fait quoi, pseudos en jeu, spécialités et disponibilités.",
         icon="users",
-        version="5.2.0",
+        version="5.2.1",
         parent="country",
     )
 
@@ -199,14 +190,7 @@ class MembersTool(Tool):
         return self._actions
 
     def refresh(self) -> None:
-        session = self._host.session
-        if not session.online:
-            return
-        if not session.server_at_least(MIN_SERVER):
-            if self._page is not None:
-                self._page.set_unavailable(
-                    f"L'annuaire arrive avec le serveur {MIN_SERVER} : préviens l'équipe pour qu'elle le mette à jour."
-                )
+        if not self._host.session.online:
             return
 
         def done(raw: list[dict[str, Any]]) -> None:

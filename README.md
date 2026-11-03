@@ -1,4 +1,4 @@
-# Syncron 5.2
+# Syncron 5.2.1
 
 Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargeable** (Windows, Linux, macOS) réservé aux membres du pays, connecté à une **API hébergée**. La connexion se fait avec **Discord** (limitée au serveur Discord du pays), et une **administration découpée par système** permet à l'équipe de tout tenir à jour.
 
@@ -57,6 +57,11 @@ ruff check . && ruff format --check .
 ## Production
 
 Voir [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) : application Discord, `docker compose up -d --build`, build du client avec `python build_client.py --server-url https://…`, rôles et systèmes confiés, mises à jour, sauvegardes.
+
+## Nouveautés de la 5.2.1
+
+- **Thème Noël renforcé** : guirlande lumineuse qui clignote en haut de la fenêtre, neige dans la barre latérale et sur l'accueil, titres dorés, « Joyeux Noël » sur l'accueil, rouge et vert plus francs.
+- Serveur à jour : les vérifications de version temporaires (Images, Profil, Membres, Banque, Pays) sont retirées.
 
 ## Nouveautés de la 5.2
 

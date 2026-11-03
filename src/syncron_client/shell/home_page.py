@@ -130,7 +130,8 @@ class HomePage(QScrollArea):
     def refresh(self, tool_id: str | None = None) -> None:
         session = self._host.session
         name = session.display_name if session.user else ""
-        self._greeting.setText(f"BIENVENUE, {name.upper()}" if name else "BIENVENUE")
+        welcome = "JOYEUX NOËL" if COLORS.festive else "BIENVENUE"
+        self._greeting.setText(f"{welcome}, {name.upper()}" if name else welcome)
         self._title.setText(session.nation_name or "Syncron")
         offline = "" if session.online else " Hors ligne : tu consultes les dernières données reçues."
         self._intro.setText(

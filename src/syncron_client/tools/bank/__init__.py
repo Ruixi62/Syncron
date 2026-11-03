@@ -45,7 +45,6 @@ from syncron_client.ui.widgets import (
 from syncron_core.text import format_quantity
 
 CACHE_FILE = "bank.json"
-MIN_SERVER = "5.2.0"
 CATEGORIES = {
     "contribution": "Cotisation",
     "sale": "Vente",
@@ -378,7 +377,7 @@ class BankTool(Tool):
         name="Banque",
         description="Le solde du pays, ses entrées et ses sorties, et les plus généreux contributeurs.",
         icon="database",
-        version="5.2.0",
+        version="5.2.1",
         system="bank",
         parent="country",
     )
@@ -431,7 +430,7 @@ class BankTool(Tool):
         session = self._host.session
         if self._page is not None:
             self._page.set_editable(session.can_manage(self.info.system))
-        if not session.online or not session.server_at_least(MIN_SERVER):
+        if not session.online:
             return
 
         def done(state: dict[str, Any]) -> None:

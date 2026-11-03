@@ -93,6 +93,7 @@ class Palette:
     brand_mid: str = "#0d1520"
     brand_end: str = "#0b1a2a"
     shadow: str = "rgba(0, 0, 0, 0.35)"
+    headline: str = ""  # couleur des grands titres (vide : couleur du texte)
 
 
 DARK = Palette()
@@ -204,38 +205,39 @@ CHERRY = Palette(
 CHRISTMAS = Palette(
     dark=True,
     festive=True,
-    bg="#0d1411",
-    sidebar="#101a15",
-    surface="#15211b",
-    surface_alt="#1b2a22",
-    surface_hover="#23362b",
-    border="#1f3027",
-    border_strong="#2e4637",
-    card_border="transparent",
-    text="#f4efe4",
-    text_muted="#b3ab9b",
-    text_faint="#7c7566",
-    accent="#e0464a",
-    accent_hover="#ea6266",
-    accent_pressed="#c53337",
+    bg="#0b1510",
+    sidebar="#0e1b14",
+    surface="#13241b",
+    surface_alt="#1a2e23",
+    surface_hover="#22392c",
+    border="#1e3428",
+    border_strong="#2e4b39",
+    card_border="rgba(240, 200, 94, 0.10)",
+    text="#f7f1e3",
+    text_muted="#bcb29c",
+    text_faint="#857c68",
+    accent="#e8363c",
+    accent_hover="#f25459",
+    accent_pressed="#c9262c",
     accent_text="#ffffff",
-    accent_soft="rgba(224, 70, 74, 0.16)",
+    accent_soft="rgba(232, 54, 60, 0.18)",
     info="#7db4e6",
-    info_soft="rgba(125, 180, 230, 0.13)",
-    success="#5cc27c",
-    success_soft="rgba(92, 194, 124, 0.14)",
-    warning="#e8c25a",
-    warning_soft="rgba(232, 194, 90, 0.14)",
+    info_soft="rgba(125, 180, 230, 0.14)",
+    success="#4fcf7a",
+    success_soft="rgba(79, 207, 122, 0.15)",
+    warning="#f0c75e",
+    warning_soft="rgba(240, 199, 94, 0.16)",
     danger="#ff6b6b",
-    danger_soft="rgba(255, 107, 107, 0.13)",
-    violet="#e8c25a",
-    violet_soft="rgba(232, 194, 90, 0.13)",
-    hero_start="#3b1517",
-    hero_end="#123222",
-    brand_start="#3b1517",
-    brand_mid="#101a15",
-    brand_end="#123222",
+    danger_soft="rgba(255, 107, 107, 0.14)",
+    violet="#f0c75e",
+    violet_soft="rgba(240, 199, 94, 0.15)",
+    hero_start="#5a161b",
+    hero_end="#0f4027",
+    brand_start="#5a161b",
+    brand_mid="#0e1b14",
+    brand_end="#0f4027",
     shadow="rgba(0, 0, 0, 0.35)",
+    headline="#f0c75e",
 )
 PALETTES: dict[ThemeMode, Palette] = {
     ThemeMode.DARK: DARK,
@@ -366,7 +368,7 @@ QToolTip {{ background: {c.surface_alt}; color: {c.text}; border: 1px solid {c.b
            border-radius: 6px; padding: 6px 8px; }}
 
 /* ---------- Typographie ---------- */
-QLabel[role="display"] {{ font-size: 28px; font-weight: 700; }}
+QLabel[role="display"] {{ font-size: 28px; font-weight: 700; {f"color: {c.headline};" if c.headline else ""} }}
 QLabel[role="title"] {{ font-size: 21px; font-weight: 650; }}
 QLabel[role="heading"] {{ font-size: 15px; font-weight: 600; }}
 QLabel[role="overline"] {{ color: {c.text_faint}; font-size: 11px; font-weight: 600; }}
