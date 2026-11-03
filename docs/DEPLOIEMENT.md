@@ -2,7 +2,7 @@
 
 Syncron est le logiciel interne du pays : il est réservé à ses membres. Ce guide va d'un serveur vide jusqu'au client distribué aux membres. Compter environ 30 minutes.
 
-> **Tu mets à jour un serveur existant ?** Lis directement la [section 8](#8-passer-à-la-51).
+> **Tu mets à jour un serveur existant ?** Lis directement la [section 8](#8-passer-à-la-52).
 
 ## 1. Prérequis
 
@@ -82,7 +82,15 @@ Dans **Comptes**, passe un membre en Éditeur, puis choisis ses systèmes dans l
 - **Serveur** : `git pull && docker compose up -d --build`. Les migrations s'appliquent toutes seules.
 - **Client** : publie le nouveau build. Pour obliger les membres à mettre à jour, augmente `SYNCRON_MIN_CLIENT_VERSION` dans `.env`, puis lance `docker compose up -d`. Les anciens clients affichent alors « Mise à jour requise ».
 
-## 8. Passer à la 5.1
+## 8. Passer à la 5.2
+
+La migration `0007` crée la table de la banque. Rien d'autre ne change côté serveur.
+
+1. Sur le serveur : `git pull && docker compose up -d --build`, puis vérifie `https://<ton domaine>/api/v1/meta` : `"version"` doit valoir `5.2.0`. **Tant que ce n'est pas le cas, le profil, l'annuaire, les images et la banque ne fonctionnent pas** (le client l'indique en clair).
+2. Publie le client : pousse sur `main`, la Release `v5.2.0` se crée et les clients se mettent à jour seuls.
+3. Confie la **Banque** aux trésoriers : Administration › Comptes, cocher « Banque » dans leurs systèmes.
+
+### Passer à la 5.1
 
 La migration `0006` ajoute les profils des membres et l'historique de l'API NationsGlory.
 

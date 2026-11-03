@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from syncron_client.platform.hub import HubTool
 from syncron_client.platform.registry import ToolRegistry
 from syncron_client.platform.tool import NotifyLevel, Placement, ToolStage
 from syncron_client.settings import JsonSettingsStore
@@ -118,9 +119,19 @@ class ShellWindow(QMainWindow):
 
     @property
     def current_page(self) -> str | None:
+        """Page affichée ; pour une rubrique (Pays), l'onglet ouvert s'il y en a un."""
+        if self._current in self._registry:
+            tool = self._registry.get(self._current)
+            if isinstance(tool, HubTool) and tool.current_child():
+                return tool.current_child()
         return self._current
 
     def show_page(self, page_id: str) -> None:
+        parent = self._parent_of(page_id)
+        if parent is not None:
+            self.show_page(parent.info.id)
+            parent.show_child(page_id)
+            return
         if page_id == self._current:
             return
         if page_id == LOVE_ID and LOVE_ID not in self._pages:
@@ -134,7 +145,10 @@ class ShellWindow(QMainWindow):
         if page_id in self._registry:
             tool = self._registry.get(page_id)
             if page_id not in self._pages:
-                self._add_page(page_id, tool.create_page())
+                page = tool.create_page()
+                self._add_page(page_id, page)
+                if isinstance(tool, HubTool):
+                    page.childChanged.connect(lambda _child, hub=tool: self._update_hub_bar(hub))
             self._top_bar.set_page(tool.info.name, tool.info.description, tool.page_actions())
             tool.activated()
         elif page_id == HOME_ID:
@@ -238,7 +252,24 @@ class ShellWindow(QMainWindow):
     # -- interne -----------------------------------------------------------------
 
     def _ordered_tools(self) -> list:
-        return sorted(self._registry, key=lambda tool: SIDEBAR_ORDER.index(tool.info.placement))
+        """Outils de la barre latérale : ceux rangés dans une rubrique n'y figurent pas."""
+        tools = [tool for tool in self._registry if self._parent_of(tool.info.id) is None]
+        return sorted(tools, key=lambda tool: SIDEBAR_ORDER.index(tool.info.placement))
+
+    def _parent_of(self, tool_id: str) -> HubTool | None:
+        if tool_id not in self._registry:
+            return None
+        parent_id = self._registry.get(tool_id).info.parent
+        parent = self._registry.get(parent_id) if parent_id and parent_id in self._registry else None
+        return parent if isinstance(parent, HubTool) else None
+
+    def _update_hub_bar(self, hub: HubTool) -> None:
+        if self._current != hub.info.id:
+            return
+        child = hub.child(hub.current_child())
+        title = f"{hub.info.name} · {child.info.name}" if child else hub.info.name
+        description = child.info.description if child else hub.info.description
+        self._top_bar.set_page(title, description, hub.page_actions())
 
     def _add_page(self, page_id: str, page: QWidget) -> None:
         self._pages[page_id] = page
@@ -265,6 +296,9 @@ class ShellWindow(QMainWindow):
         if tool_id in self._registry:
             self._sidebar.set_status(tool_id, self._registry.get(tool_id).status())
             self._home.refresh(tool_id)
+            parent = self._parent_of(tool_id)
+            if parent is not None:
+                self._refresh_status(parent.info.id)
 
     def _install_shortcuts(self) -> None:
         search = QAction(self)
@@ -297,7 +331,7 @@ class ShellWindow(QMainWindow):
             self._tray.hide()
         set_taskbar_badge(0)
         self._settings.set("window_geometry", bytes(self.saveGeometry().toHex()).decode("ascii"))
-        self._settings.set("last_page", self._current if self._current not in (None, LOVE_ID) else HOME_ID)
+        self._settings.set("last_page", self.current_page if self._current not in (None, LOVE_ID) else HOME_ID)
         try:
             self._settings.save()
         except OSError:

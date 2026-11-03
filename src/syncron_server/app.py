@@ -21,6 +21,7 @@ from syncron_server.protection import AuthRateLimit, BodySizeLimit, SlidingWindo
 from syncron_server.routers import (
     admin,
     auth,
+    bank,
     calendar,
     catalog,
     craft_admin,
@@ -94,7 +95,7 @@ def create_app(
     app.include_router(catalog.router)
     app.include_router(admin.router)
     app.include_router(craft_admin.router)
-    for module in (research, calendar, inbox, nationsglory):
+    for module in (research, calendar, bank, inbox, nationsglory):
         app.include_router(module.router)
         app.include_router(module.admin_router)
     app.include_router(images.router)

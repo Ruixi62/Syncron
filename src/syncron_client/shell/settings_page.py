@@ -60,8 +60,16 @@ from syncron_core import APP_DISPLAY_NAME, __version__
 
 DESKTOP_NOTIFICATIONS_KEY = "desktop_notifications"
 TASKBAR_BADGE_KEY = "taskbar_badge"
-THEME_CHOICES = (ThemeMode.SYSTEM, ThemeMode.DARK, ThemeMode.LIGHT, ThemeMode.FOREST, ThemeMode.CHERRY)
+THEME_CHOICES = (
+    ThemeMode.SYSTEM,
+    ThemeMode.DARK,
+    ThemeMode.LIGHT,
+    ThemeMode.FOREST,
+    ThemeMode.CHERRY,
+    ThemeMode.CHRISTMAS,
+)
 HEART_COLOR = "#ff4d6d"
+PROFILE_SERVER = "5.1.0"
 SECTIONS = (
     ("profile", "Profil", "user"),
     ("appearance", "Apparence", "sparkles"),
@@ -176,7 +184,7 @@ class ThemeTile(QPushButton):
 
 
 class ThemePicker(QWidget):
-    """Vignettes des thèmes. Indices : Système, Sombre, Clair, Forêt, Cerisier."""
+    """Vignettes des thèmes. Indices : Système, Sombre, Clair, Forêt, Cerisier, Noël."""
 
     currentChanged = Signal(int)
 
@@ -423,6 +431,7 @@ class ProfileSection(QWidget):
         self.color.changed.connect(self._changed)
         self.show_discord.toggled.connect(self._changed)
         self._bio_changed()
+        self._dirty = False
 
     @property
     def member(self) -> Member | None:
@@ -439,11 +448,22 @@ class ProfileSection(QWidget):
         return self._dirty
 
     def refresh(self) -> None:
-        online = self._host.session.online
-        self.offline_note.setVisible(not online)
+        session = self._host.session
+        online = session.online
+        ready = online and session.server_at_least(PROFILE_SERVER)
+        if not online:
+            self.offline_note.setText("Hors ligne : le profil se modifie une fois reconnecté.")
+        elif not ready:
+            version = f" (il est en {session.server_version})" if session.server_version else ""
+            self.offline_note.setText(
+                f"Les profils arrivent avec le serveur {PROFILE_SERVER}{version}. Préviens l'équipe : il faut le "
+                "mettre à jour (git pull puis docker compose up -d --build). Tu pourras alors enregistrer ton profil."
+            )
+        self.offline_note.setVisible(not ready)
+        self.offline_note.setWordWrap(True)
         for widget in (self.save_button, self.reset_button):
-            widget.setEnabled(online)
-        if online:
+            widget.setEnabled(ready)
+        if ready:
             call_api(self._host, self._host.api.profile, lambda raw: self.load(Member.from_api(raw)))
 
     def load(self, member: Member) -> None:

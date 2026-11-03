@@ -199,7 +199,7 @@ class AdminTool(Tool):
         name="Administration",
         description="Gestion de chaque système du pays, des comptes et du journal.",
         icon="shield",
-        version="5.1.0",
+        version="5.2.0",
         min_role="editor",
         placement=Placement.MANAGE,
     )

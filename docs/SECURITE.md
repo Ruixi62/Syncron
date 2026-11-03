@@ -1,4 +1,4 @@
-# Audit de sécurité — Syncron 4.3, mis à jour en 4.5 et 5.1
+# Audit de sécurité — Syncron 4.3, mis à jour en 4.5, 5.1 et 5.2
 
 Revue du serveur (FastAPI, PostgreSQL), du client (PySide6), du déploiement (Docker, Caddy) et de la mise à jour automatique. Chaque point corrigé est couvert par un test (`tests/server/test_security.py`, `tests/client/test_units.py`, `tests/client/test_systems_ui.py`).
 
@@ -13,6 +13,11 @@ Revue du serveur (FastAPI, PostgreSQL), du client (PySide6), du déploiement (Do
 | 5 | Faible | **Taille des requêtes** limitée seulement par Caddy : une API exposée sans Caddy acceptait des corps JSON énormes (import). | Limite dans l'application aussi : 5 Mo, portée à 10 Mo en 4.5 pour les images (`SYNCRON_MAX_REQUEST_BYTES`), réponse 413. |
 | 6 | Faible | **Image envoyée pour un objet inexistant** : le fichier était écrit sur le disque avant la vérification, et l'identifiant n'était pas contrôlé. | Identifiant et existence vérifiés avant toute écriture. |
 | 7 | Faible | **Mise à jour automatique** : l'archive pouvait venir de n'importe quel hôte indiqué par la Release, sans limite de taille, et l'extraction faisait confiance aux chemins du zip. | Téléchargements uniquement depuis GitHub en HTTPS (redirections comprises), 400 Mo au plus, 1 Go une fois extrait, chemins vérifiés un par un avant extraction. |
+
+## Vérifié en 5.2
+
+- **Banque** : lecture par les membres connectés, écriture réservée au système « bank » (et aux administrateurs) ; montants bornés et non nuls, catégories fixées, membre lié vérifié, chaque ajout, correction et suppression au journal. Textes (motifs, pseudos) affichés tels quels, info-bulles échappées.
+- **Rubrique Pays** : simple regroupement côté client, aucun nouveau droit.
 
 ## Corrigé dans la 5.1
 

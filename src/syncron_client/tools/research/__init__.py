@@ -38,8 +38,9 @@ class ResearchTool(Tool):
         name="R&D",
         description="Les cinq domaines de recherche du pays : paliers, conditions, récompenses et avancement.",
         icon="flask",
-        version="5.1.0",
+        version="5.2.0",
         system="research",
+        parent="country",
     )
 
     def __init__(self) -> None:

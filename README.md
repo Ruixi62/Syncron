@@ -1,4 +1,4 @@
-# Syncron 5.1
+# Syncron 5.2
 
 Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargeable** (Windows, Linux, macOS) réservé aux membres du pays, connecté à une **API hébergée**. La connexion se fait avec **Discord** (limitée au serveur Discord du pays), et une **administration découpée par système** permet à l'équipe de tout tenir à jour.
 
@@ -6,12 +6,15 @@ Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargea
 |---|---|---|
 | **Messagerie** | tous | annonces de l'équipe et nouvelles du pays, avec notifications |
 | **Craft** | tous | ressources, étapes, ateliers, prérequis et temps de fabrication (calcul local, hors ligne possible) |
-| **R&D** | tous | les cinq domaines (global, militaire, ressources, industrie, technologie), leurs paliers, conditions, récompenses et l'avancement du pays (380 / 1 000…), paliers validés dans l'ordre |
+| **Pays** | tous | l'accueil du pays, avec les onglets R&D, Membres et Banque |
+| **R&D** (Pays) | tous | les cinq domaines (global, militaire, ressources, industrie, technologie), leurs paliers, conditions, récompenses et l'avancement du pays (380 / 1 000…), paliers validés dans l'ordre |
 | **Calendrier** | tous | réunions, guerres, événements, économie ; vue du mois ou liste ; événements récurrents |
 | **Convertisseur** | tous | stacks (64), lignes (576), coffres (1 728), doubles coffres (3 456) : division euclidienne ou unité unique |
-| **Membres** | tous | l'annuaire du pays : profils, pseudos en jeu, grades, spécialités, disponibilités |
+| **Membres** (Pays) | tous | l'annuaire du pays : profils, pseudos en jeu, grades, spécialités, disponibilités |
+| **Banque** (Pays) | tous, saisie par l'équipe | solde, opérations, contributeurs |
+| **Recherche** | tous | page en travaux : informations des autres pays (API NationsGlory) |
 | **Images** | tous | héberger une image (bouton, glisser-déposer, Ctrl+V) et copier son lien public à partager sur Discord |
-| **Alertes** | tous | page en travaux : arrivera avec l'intégration de l'API NationsGlory |
+| **Mes alertes** | tous | page en travaux : arrivera avec l'intégration de l'API NationsGlory |
 | **Administration** | éditeurs, admins | une rubrique par système (onglets), les comptes, NationsGlory et le journal |
 
 ```
@@ -30,7 +33,7 @@ Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargea
 | `src/syncron_server/` | API : FastAPI, SQLAlchemy 2 async, Alembic, Discord OAuth2, JWT, un routeur par système |
 | `src/syncron_client/` | Client de bureau : connexion, session, notifications, plateforme d'outils, un paquet par outil |
 | `deploy/` | Dockerfile, docker-compose (PostgreSQL + API + Caddy), `.env.example`, sauvegardes, catalogue d'exemple |
-| `tests/` | 195 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
+| `tests/` | 200 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
 | `docs/` | `DEPLOIEMENT.md` (mise en ligne, mises à jour), `ARCHITECTURE.md` (systèmes, ajouter un outil), `SECURITE.md` (audit) |
 
 ## Démarrage rapide (développement)
@@ -54,6 +57,15 @@ ruff check . && ruff format --check .
 ## Production
 
 Voir [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) : application Discord, `docker compose up -d --build`, build du client avec `python build_client.py --server-url https://…`, rôles et systèmes confiés, mises à jour, sauvegardes.
+
+## Nouveautés de la 5.2
+
+- **Pays** : nouvelle rubrique, la page d'accueil du pays (avancement de la R&D, membres, solde de la banque) avec les onglets **R&D**, **Membres** et **Banque**.
+- **Banque** : solde du pays, entrées et sorties sur 30 jours, opérations (motif, catégorie, membre, date) saisies par l'équipe, classement des contributeurs.
+- **Recherche** : page en travaux pour les informations des autres pays récupérées sur NationsGlory.
+- **Thème Noël** : rouge, vert sapin et or, avec de la neige qui tombe sur l'accueil.
+- **Mes alertes** : nouveau nom de l'outil Alertes.
+- **Corrigé** : texte qui débordait sous les titres (Membres, Images) ; le profil se recharge bien à l'ouverture ; message clair au lieu d'une erreur quand le serveur n'a pas encore les profils.
 
 ## Nouveautés de la 5.1
 

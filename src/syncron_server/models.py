@@ -456,3 +456,33 @@ class NationsGlorySnapshot(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     __table_args__ = (Index("ix_ng_snapshots_kind_target_fetched", "kind", "target", "fetched_at"),)
+
+
+# -- Banque ---------------------------------------------------------------------------------
+
+BANK_CATEGORIES = ("contribution", "sale", "purchase", "tax", "war", "salary", "other")
+
+
+class BankTransaction(Base):
+    """Opération sur la banque du pays : montant positif (entrée) ou négatif (sortie), en $ du jeu."""
+
+    __tablename__ = "bank_transactions"
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    amount: Mapped[int] = mapped_column(BigInteger)
+    label: Mapped[str] = mapped_column(String(160))
+    category: Mapped[str] = mapped_column(String(16), default="other")
+    member_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    member_name: Mapped[str] = mapped_column(String(64), default="")
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        CheckConstraint("amount <> 0 and amount between -1000000000000 and 1000000000000", name="amount"),
+        CheckConstraint(
+            "category in ('contribution', 'sale', 'purchase', 'tax', 'war', 'salary', 'other')", name="category"
+        ),
+        CheckConstraint("label <> ''", name="label"),
+    )

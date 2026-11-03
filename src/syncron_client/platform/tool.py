@@ -81,6 +81,7 @@ class ToolInfo:
     min_role: str | None = None
     placement: Placement = Placement.TOOLS
     system: str | None = None
+    parent: str | None = None  # outil « rubrique » qui affiche celui-ci dans un onglet (ex. Pays)
 
 
 @dataclass(frozen=True, slots=True)

@@ -32,6 +32,7 @@ class ThemeMode(StrEnum):
     LIGHT = "light"
     FOREST = "forest"
     CHERRY = "cherry"
+    CHRISTMAS = "christmas"
 
     @property
     def label(self) -> str:
@@ -41,6 +42,7 @@ class ThemeMode(StrEnum):
             "light": "Clair",
             "forest": "Forêt",
             "cherry": "Cerisier",
+            "christmas": "Noël",
         }[self.value]
 
     @property
@@ -51,12 +53,14 @@ class ThemeMode(StrEnum):
             "light": "Gris doux, sans blanc éclatant",
             "forest": "Sombre aux reflets verts",
             "cherry": "Rose pâle de fleur de cerisier",
+            "christmas": "Rouge, vert sapin et or, avec de la neige sur l'accueil",
         }[self.value]
 
 
 @dataclass(slots=True)
 class Palette:
     dark: bool = True
+    festive: bool = False
     bg: str = "#0b0e14"
     sidebar: str = "#0d1118"
     surface: str = "#131823"
@@ -197,11 +201,48 @@ CHERRY = Palette(
     brand_end="#eedff4",
     shadow="rgba(80, 20, 40, 0.08)",
 )
+CHRISTMAS = Palette(
+    dark=True,
+    festive=True,
+    bg="#0d1411",
+    sidebar="#101a15",
+    surface="#15211b",
+    surface_alt="#1b2a22",
+    surface_hover="#23362b",
+    border="#1f3027",
+    border_strong="#2e4637",
+    card_border="transparent",
+    text="#f4efe4",
+    text_muted="#b3ab9b",
+    text_faint="#7c7566",
+    accent="#e0464a",
+    accent_hover="#ea6266",
+    accent_pressed="#c53337",
+    accent_text="#ffffff",
+    accent_soft="rgba(224, 70, 74, 0.16)",
+    info="#7db4e6",
+    info_soft="rgba(125, 180, 230, 0.13)",
+    success="#5cc27c",
+    success_soft="rgba(92, 194, 124, 0.14)",
+    warning="#e8c25a",
+    warning_soft="rgba(232, 194, 90, 0.14)",
+    danger="#ff6b6b",
+    danger_soft="rgba(255, 107, 107, 0.13)",
+    violet="#e8c25a",
+    violet_soft="rgba(232, 194, 90, 0.13)",
+    hero_start="#3b1517",
+    hero_end="#123222",
+    brand_start="#3b1517",
+    brand_mid="#101a15",
+    brand_end="#123222",
+    shadow="rgba(0, 0, 0, 0.35)",
+)
 PALETTES: dict[ThemeMode, Palette] = {
     ThemeMode.DARK: DARK,
     ThemeMode.LIGHT: LIGHT,
     ThemeMode.FOREST: FOREST,
     ThemeMode.CHERRY: CHERRY,
+    ThemeMode.CHRISTMAS: CHRISTMAS,
 }
 
 COLORS = replace(DARK)

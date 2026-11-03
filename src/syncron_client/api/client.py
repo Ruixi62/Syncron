@@ -135,6 +135,20 @@ class ApiClient:
     def members(self) -> list[dict[str, Any]]:
         return self._json("GET", "/api/v1/members")
 
+    # -- banque ------------------------------------------------------------------------------
+
+    def bank(self) -> dict[str, Any]:
+        return self._json("GET", "/api/v1/bank")
+
+    def add_bank_transaction(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._json("POST", "/api/v1/admin/bank/transactions", json=payload, expected=(201,))
+
+    def edit_bank_transaction(self, transaction_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._json("PUT", f"/api/v1/admin/bank/transactions/{transaction_id}", json=payload)
+
+    def delete_bank_transaction(self, transaction_id: int) -> None:
+        self._request("DELETE", f"/api/v1/admin/bank/transactions/{transaction_id}")
+
     # -- NationsGlory --------------------------------------------------------------------------
 
     def nationsglory_status(self) -> dict[str, Any]:

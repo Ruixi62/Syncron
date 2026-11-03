@@ -1,4 +1,4 @@
-# Syncron 5.1 — Architecture
+# Syncron 5.2 — Architecture
 
 Syncron est le logiciel interne d'un pays de NationsGlory : un client de bureau réservé aux membres, connecté à une API hébergée.
 
@@ -24,6 +24,7 @@ Tout est découpé en **systèmes**. Chacun a ses tables, ses routes de lecture,
 | `craft` | `/api/v1/catalog`, `/api/v1/craft/plan` | `/api/v1/admin/craft/…` | Craft |
 | `research` | `/api/v1/research` | `/api/v1/admin/research/…` | R&D |
 | `calendar` | `/api/v1/calendar/events` | `/api/v1/admin/calendar/…` | Calendrier |
+| `bank` | `/api/v1/bank` | `/api/v1/admin/bank/transactions[/{id}]` | Pays › Banque |
 | `messages` | `/api/v1/inbox` | `/api/v1/admin/messages` | Messagerie |
 | `images` | `/api/v1/images` (envoi par tout membre) | suppression de toute image | Images |
 | `nationsglory` | `/api/v1/nationsglory/country` | `/api/v1/admin/nationsglory/…` | Administration › NationsGlory |
@@ -86,6 +87,15 @@ erDiagram
         int recurrence_days "jours de la semaine (masque)"
         date recurrence_until
         json skipped_dates "dates annulées"
+    }
+    users ||--o{ bank_transactions : "contribue"
+    bank_transactions {
+        bigint id PK
+        bigint amount "positif : entrée, négatif : sortie"
+        string label
+        string category "contribution | sale | purchase | tax | war | salary | other"
+        string member_name "pseudo libre sans compte"
+        timestamptz occurred_at
     }
     users ||--o| user_profiles : "profil"
     users ||--o{ ng_snapshots : "appelle"
@@ -183,6 +193,8 @@ Tout système publie une nouvelle avec `messaging.post_message(session, system=�
 | PATCH, DELETE | `/api/v1/images/{id}` | auteur de l'image, ou Images |
 | GET, PUT | `/api/v1/profile` · GET `/api/v1/members[/{id}]` | connecté (son profil ; annuaire sans comptes suspendus) |
 | GET | `/api/v1/nationsglory/country` (dernières données du pays) | connecté |
+| GET | `/api/v1/bank` (solde, 30 jours, opérations, contributeurs) | connecté |
+| POST, PUT, DELETE | `/api/v1/admin/bank/transactions[/{id}]` | Banque |
 | GET, POST | `/api/v1/admin/nationsglory`, `/fetch`, `/snapshots[/{id}]` | NationsGlory |
 | GET, PATCH | `/api/v1/admin/users` | admin |
 | GET | `/media/…` (dont `/media/images/<jeton>` : images partagées) | public, cache immuable |
@@ -194,7 +206,8 @@ Launcher ──▶ LoginWindow ──(Discord / reprise / hors ligne)──▶ S
    │                                                            │
    ├─ ApiClient (httpx, renouvellement des jetons)              ├─ Accueil (cartes des outils) · Paramètres
    ├─ TokenStore (coffre du système, ou fichier en repli)       ├─ Messagerie            (barre latérale, en haut)
-   ├─ CatalogStore (cache disque, ETag, images)                 ├─ Craft · R&D · Calendrier · Membres · Convertisseur · Images · Alertes (en travaux)
+   ├─ CatalogStore (cache disque, ETag, images)                 ├─ Pays (Accueil · R&D · Membres · Banque) · Craft · Calendrier · Recherche (en travaux)
+   │                                                            ├─ Convertisseur · Images · Mes alertes (en travaux)
    ├─ NotificationCenter (cloche, bulles, bureau)               └─ Administration        (Gestion, éditeurs+)
    ├─ Session (utilisateur, rôle, systèmes confiés, en ligne)
    └─ TaskRunner (QThreadPool → retour dans le thread de l'interface)
@@ -208,7 +221,9 @@ Launcher ──▶ LoginWindow ──(Discord / reprise / hors ligne)──▶ S
 
 ### Contrat d'un outil
 
-`ToolInfo` : `id`, `name`, `icon`, `placement` (`MAIN` sous l'accueil, `TOOLS` dans « Outils » et sur l'accueil, `MANAGE` dans « Gestion »), `min_role`, `system`.
+`ToolInfo` : `id`, `name`, `icon`, `placement` (`MAIN` sous l'accueil, `TOOLS` dans « Outils » et sur l'accueil, `MANAGE` dans « Gestion »), `min_role`, `system`, `parent`.
+
+**Rubriques** (`platform/hub.py`) : un `HubTool` (Pays) affiche dans des onglets les outils dont `ToolInfo.parent` vaut son identifiant, plus sa propre page d'accueil. Ces outils restent des outils à part entière (données, liens des messages, recherche, administration) ; la fenêtre redirige `show_page("research")` vers Pays › R&D et ne les montre pas dans la barre latérale.
 
 `Tool` : `setup(host)`, `create_page()`, `activated()`, `open(clé)` (liens des messages et recherche), `status()` (pastille), `page_actions()`, et **`admin_sections()`** : les écrans de gestion du système, que l'outil Administration regroupe sous le nom de l'outil et ne montre qu'aux comptes qui gèrent `system`.
 

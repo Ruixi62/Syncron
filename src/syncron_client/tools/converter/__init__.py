@@ -23,7 +23,7 @@ class ConverterTool(Tool):
         name="Convertisseur",
         description="Stacks (64), lignes (576), coffres (1 728), doubles coffres (3 456) : division ou unité unique.",
         icon="convert",
-        version="5.1.0",
+        version="5.2.0",
     )
 
     def __init__(self) -> None:

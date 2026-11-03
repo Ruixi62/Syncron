@@ -369,6 +369,25 @@ def reserve_wrapped_height(widget: QLabel, width: int) -> None:
     widget.setMinimumHeight(widget.heightForWidth(width))
 
 
+class WrappedText(QLabel):
+    """Texte centré sur plusieurs lignes, de largeur fixe, qui réserve sa hauteur réelle
+    à chaque changement de texte (sinon un texte plus long déborde sur ce qui l'entoure)."""
+
+    def __init__(self, text: str, width: int, role: str = "muted", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setTextFormat(Qt.TextFormat.PlainText)
+        self.setProperty("role", role)
+        self.setWordWrap(True)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._width = width
+        self.setText(text)
+
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        reserve_wrapped_height(self, self._width)
+        self.updateGeometry()
+
+
 class EmptyState(QWidget):
     def __init__(self, icon_name: str, title: str, text: str, parent: QWidget | None = None):
         super().__init__(parent)
@@ -379,9 +398,8 @@ class EmptyState(QWidget):
         badge.setStyleSheet(f"background: {COLORS.accent_soft}; border-radius: 20px;")
         heading = label(title, "heading")
         heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        body = label(text, "muted", wrap=True)
-        body.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        reserve_wrapped_height(body, EMPTY_STATE_TEXT_WIDTH)
+        self.heading = heading
+        body = WrappedText(text, EMPTY_STATE_TEXT_WIDTH)
         self.body_label = body
         layout = QVBoxLayout(self)
         layout.addStretch(1)

@@ -154,7 +154,8 @@ class MembersTool(Tool):
         name="Membres",
         description="L'annuaire du pays : qui fait quoi, pseudos en jeu, spécialités et disponibilités.",
         icon="users",
-        version="5.1.0",
+        version="5.2.0",
+        parent="country",
     )
 
     def __init__(self) -> None:

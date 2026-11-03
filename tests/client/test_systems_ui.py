@@ -21,7 +21,7 @@ def test_home_lists_country_tools_without_admin_and_hides_search(make_launcher, 
     shell = sign_in(make_launcher())
     window = shell.window
     window.show_page("home")
-    assert window._home.card_ids == ["craft", "research", "calendar", "members", "converter", "images", "alerts"]
+    assert window._home.card_ids == ["country", "craft", "calendar", "intel", "converter", "images", "alerts"]
     assert window._home._title.text() == "Empire du Levant"
     assert "outils internes de Empire du Levant" in window._home._intro.text()
     assert not window.top_bar.search_visible()
@@ -484,8 +484,8 @@ def test_admin_navigation_has_tabs_and_subtabs(make_launcher, tmp_path):
     assert page.group_keys == [
         "overview",
         "accounts",
-        "craft",
         "research",
+        "craft",
         "calendar",
         "messages",
         "nationsglory",
@@ -546,7 +546,7 @@ def test_forest_and_cherry_themes(make_launcher, tmp_path):
     launcher = make_launcher(user_dir=tmp_path / "theme")
     shell = sign_in(launcher, "theme", "player")
     picker = shell.window._settings_page.theme_choice
-    assert [tile.mode.value for tile in picker.tiles] == ["system", "dark", "light", "forest", "cherry"]
+    assert [tile.mode.value for tile in picker.tiles] == ["system", "dark", "light", "forest", "cherry", "christmas"]
     try:
         picker.set_current_index(3)
         QApplication.processEvents()
@@ -557,3 +557,115 @@ def test_forest_and_cherry_themes(make_launcher, tmp_path):
         assert launcher.shell.window._settings_page.theme_choice.current_index() == 4
     finally:
         apply_theme(QApplication.instance(), "dark")
+
+
+# -- 5.2 ----------------------------------------------------------------------------------------
+
+
+def test_country_hub_groups_research_members_and_bank(make_launcher, tmp_path):
+    shell = sign_in(make_launcher(user_dir=tmp_path / "chef"), "chef", "admin")
+    window = shell.window
+    assert "research" not in window._sidebar._buttons and "country" in window._sidebar._buttons
+    window.show_page("country")
+    country = shell.registry.get("country")
+    assert window.current_page == "country" and country.current_child() == ""
+    home = country.home
+    assert home.cards["research"].value.text() == "0 / 66" and home.cards["bank"].value.text() == "0 $"
+    home.cards["members"].openRequested.emit("members")
+    assert window.current_page == "members" and window._current == "country"
+    assert window._top_bar._title.text() == "Pays · Membres"
+    window.open_in_tool("research", "militaire")
+    assert window.current_page == "research" and shell.registry.get("research").page.selected.id == "militaire"
+    window.show_page("home")
+    window.show_page("bank")
+    assert window.current_page == "bank" and country.page.tabs.current_index() == 3
+    assert [t.info.name for t in [shell.registry.get(i) for i in ("intel", "alerts")]] == ["Recherche", "Mes alertes"]
+
+
+def test_bank_operations_are_entered_by_the_team_and_read_by_members(make_launcher, tmp_path):
+    chef = sign_in(make_launcher(user_dir=tmp_path / "chef"), "chef", "admin")
+    chef.window.show_page("bank")
+    bank = chef.registry.get("bank")
+    form = bank.page.form
+    assert form.isVisible()
+    form.amount.setText("50 000")
+    form.label_field.setText("Fonds de départ")
+    form.category.setCurrentIndex(form.category.findData("other"))
+    form._save()
+    form.amount.setText("12000")
+    form.label_field.setText("Cotisation")
+    form.member.setEditText("chef")
+    form._save()
+    form.direction.set_current_index(1)
+    form.amount.setText("2 000")
+    form.label_field.setText("Achat de TNT")
+    form.category.setCurrentIndex(form.category.findData("war"))
+    form._save()
+    assert bank.state["balance"] == 60_000
+    assert bank.page.balance._value.text() == "60 000 $"
+    assert [c["member"] for c in bank.state["contributors"]] == ["chef"]
+    assert bank.page.table.rowCount() == 3
+
+    form.amount.setText("")
+    form._save()
+    assert form.banner.text() == "Indique un montant."
+
+    tnt = next(op for op in bank.page.operations if op.label == "Achat de TNT")
+    bank.page.table.selectRow(next(r for r in range(3) if bank.page.table.item(r, 1).text() == "Achat de TNT"))
+    assert form.editing == tnt.id and form.direction.current_index() == 1
+    form.amount.setText("1 500")
+    form._save()
+    assert bank.state["balance"] == 60_500
+    bank.delete(tnt.id)
+    assert bank.state["balance"] == 62_000 and bank.page.table.rowCount() == 2
+    bank.page.search.setText("cotisation")
+    assert bank.page.table.rowCount() == 1
+
+    reader = member(make_launcher, tmp_path, "lecteur")
+    reader.window.show_page("bank")
+    seen = reader.registry.get("bank")
+    assert not seen.page.form.isVisible() and seen.state["balance"] == 62_000
+
+
+def test_christmas_theme_snows_on_the_home_page(make_launcher, tmp_path):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtWidgets import QApplication
+
+    from syncron_client.ui.theme import CHRISTMAS, COLORS, apply_theme
+
+    for widget in QApplication.topLevelWidgets():
+        if not widget.isVisible():
+            widget.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    launcher = make_launcher(user_dir=tmp_path / "noel")
+    shell = sign_in(launcher, "noel", "player")
+    try:
+        shell.window._settings_page.theme_choice.set_current_index(5)
+        QApplication.processEvents()
+        assert COLORS.accent == CHRISTMAS.accent and COLORS.festive
+        window = launcher.shell.window
+        window.show_page("home")
+        snow = window._home.snow
+        assert snow is not None and snow.flakes
+        before = [flake.y for flake in snow.flakes]
+        snow.advance()
+        assert [flake.y for flake in snow.flakes] != before
+    finally:
+        apply_theme(QApplication.instance(), "dark")
+
+
+def test_empty_state_text_reserves_its_height_and_profile_needs_a_recent_server(make_launcher, tmp_path):
+    from syncron_client.ui.widgets import EmptyState
+
+    empty = EmptyState("users", "Aucun membre", "")
+    short = empty.body_label.minimumHeight()
+    empty.body_label.setText("Un texte assez long pour tenir sur plusieurs lignes sous le titre " * 3)
+    assert empty.body_label.minimumHeight() > short * 2
+
+    shell = member(make_launcher, tmp_path)
+    session = shell.host.session
+    session.set_meta({**session._meta, "version": "4.5.0"})
+    shell.window.open_in_tool("settings", "profile")
+    profile = shell.window._settings_page.profile
+    assert "5.1.0" in profile.offline_note.text() and not profile.save_button.isEnabled()
+    assert profile.banner.isHidden()

@@ -25,12 +25,14 @@ CALENDAR = "calendar"
 MESSAGES = "messages"
 IMAGES = "images"
 NATIONSGLORY = "nationsglory"
+BANK = "bank"
 ACCOUNTS = "accounts"
 
 SYSTEMS: dict[str, str] = {
     CRAFT: "Craft",
     RESEARCH: "R&D",
     CALENDAR: "Calendrier",
+    BANK: "Banque",
     MESSAGES: "Messagerie",
     IMAGES: "Images",
     NATIONSGLORY: "NationsGlory",

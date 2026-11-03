@@ -545,3 +545,57 @@ class NationsGloryStatusOut(BaseModel):
     cache_seconds: int
     kinds: list[str]
     latest: list[NationsGlorySnapshotOut]
+
+
+# -- Banque ---------------------------------------------------------------------------------
+
+BankCategory = Literal["contribution", "sale", "purchase", "tax", "war", "salary", "other"]
+MAX_AMOUNT = 1_000_000_000_000
+
+
+class BankTransactionIn(BaseModel):
+    """`amount` : positif pour une entrée, négatif pour une sortie. `member_id` : membre lié (facultatif) ;
+    `member_name` : pseudo libre quand la personne n'a pas de compte Syncron."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+    amount: int = Field(ge=-MAX_AMOUNT, le=MAX_AMOUNT)
+    label: str = Field(min_length=1, max_length=160)
+    category: BankCategory = "other"
+    member_id: uuid.UUID | None = None
+    member_name: str = Field("", max_length=64)
+    occurred_at: datetime | None = None
+
+    @field_validator("amount")
+    @classmethod
+    def _not_zero(cls, value: int) -> int:
+        if value == 0:
+            raise ValueError("Le montant ne peut pas être nul.")
+        return value
+
+
+class BankTransactionOut(BaseModel):
+    id: int
+    amount: int
+    label: str
+    category: BankCategory
+    member_id: uuid.UUID | None
+    member: str
+    occurred_at: datetime
+    author: str | None
+    created_at: datetime
+
+
+class BankContributorOut(BaseModel):
+    member: str
+    member_id: uuid.UUID | None
+    total: int
+    count: int
+
+
+class BankOut(BaseModel):
+    balance: int
+    income_30_days: int
+    expenses_30_days: int
+    count: int
+    transactions: list[BankTransactionOut]
+    contributors: list[BankContributorOut]

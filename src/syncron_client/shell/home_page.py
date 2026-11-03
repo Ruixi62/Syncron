@@ -13,6 +13,7 @@ from syncron_client.platform.registry import ToolRegistry
 from syncron_client.platform.tool import Placement, StatusLevel, Tool, ToolHost, ToolStage
 from syncron_client.ui import icons
 from syncron_client.ui.brand import logo_pixmap
+from syncron_client.ui.snow import Snowfall
 from syncron_client.ui.theme import COLORS
 from syncron_client.ui.widgets import Card, Chip, button, label
 from syncron_core import tagline
@@ -98,10 +99,11 @@ class HomePage(QScrollArea):
         hero_row.addWidget(logo, 0, Qt.AlignmentFlag.AlignVCenter)
         hero_row.addLayout(texts, 1)
         hero.body.addLayout(hero_row)
+        self.snow = Snowfall(hero) if COLORS.festive else None
 
         grid = QGridLayout()
         grid.setSpacing(16)
-        tools = [tool for tool in registry if tool.info.placement is Placement.TOOLS]
+        tools = [tool for tool in registry if tool.info.placement is Placement.TOOLS and not tool.info.parent]
         for index, tool in enumerate(tools):
             card = ToolCard(tool)
             card.openRequested.connect(self.openRequested)
