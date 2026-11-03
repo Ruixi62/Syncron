@@ -81,14 +81,14 @@ class LiveServer:
             self._sql(
                 "truncate audit_log, recipe_ingredients, item_requirements, items, stations, skills, "
                 "login_codes, refresh_tokens, users, message_receipts, messages, calendar_events, "
-                "hosted_images, ng_snapshots, bank_transactions, "
+                "hosted_images, ng_snapshots, bank_transactions, iris_snapshots, iris_events, "
                 "research_lines, research_tiers, research_categories restart identity cascade; "
                 "insert into research_categories select * from research_seed; "
                 "update catalog_state set revision = 0, updated_at = now();",
                 self.db_name,
             )
         )
-        self.settings.min_client_version = "5.2.1"
+        self.settings.min_client_version = "5.3.0"
         self.settings.nation_name = ""
 
     def stop(self) -> None:

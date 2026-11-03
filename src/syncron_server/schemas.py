@@ -547,6 +547,57 @@ class NationsGloryStatusOut(BaseModel):
     latest: list[NationsGlorySnapshotOut]
 
 
+# -- Iris (carte NationsGlory) --------------------------------------------------------------
+
+
+class IrisEventOut(BaseModel):
+    id: int
+    kind: Literal["meteor", "rift", "volcano", "other"]
+    title: str
+    x: int | None
+    z: int | None
+    first_seen: datetime
+    last_seen: datetime
+    ended_at: datetime | None
+    active: bool
+
+
+class IrisEventsOut(BaseModel):
+    enabled: bool
+    checked_at: datetime | None
+    events: list[IrisEventOut]
+
+
+class IrisKindOut(BaseModel):
+    kind: str
+    fetched_at: datetime | None
+    attempted_at: datetime | None
+    size_bytes: int
+    error: str
+
+
+class IrisStatusOut(BaseModel):
+    enabled: bool
+    url: str
+    world: str
+    weather_seconds: int
+    map_minutes: int
+    members_hours: int
+    kinds: list[IrisKindOut]
+    events_total: int
+    events_active: int
+
+
+class IrisRefreshIn(BaseModel):
+    job: Literal["weather", "map", "members"]
+
+
+class IrisRefreshOut(BaseModel):
+    job: str
+    started: bool
+    detail: str
+
+
 # -- Banque ---------------------------------------------------------------------------------
 
 BankCategory = Literal["contribution", "sale", "purchase", "tax", "war", "salary", "other"]

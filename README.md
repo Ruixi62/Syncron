@@ -1,4 +1,4 @@
-# Syncron 5.2.1
+# Syncron 5.3
 
 Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargeable** (Windows, Linux, macOS) réservé aux membres du pays, connecté à une **API hébergée**. La connexion se fait avec **Discord** (limitée au serveur Discord du pays), et une **administration découpée par système** permet à l'équipe de tout tenir à jour.
 
@@ -12,9 +12,9 @@ Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargea
 | **Convertisseur** | tous | stacks (64), lignes (576), coffres (1 728), doubles coffres (3 456) : division euclidienne ou unité unique |
 | **Membres** (Pays) | tous | l'annuaire du pays : profils, pseudos en jeu, grades, spécialités, disponibilités |
 | **Banque** (Pays) | tous, saisie par l'équipe | solde, opérations, contributeurs |
-| **Recherche** | tous | page en travaux : informations des autres pays (API NationsGlory) |
+| **Recherche** | tous | la carte NationsGlory (Iris) : territoires, frontières, ressources, membres de chaque pays, événements en cours |
 | **Images** | tous | héberger une image (bouton, glisser-déposer, Ctrl+V) et copier son lien public à partager sur Discord |
-| **Mes alertes** | tous | page en travaux : arrivera avec l'intégration de l'API NationsGlory |
+| **Mes alertes** | tous | alerte dès qu'une météorite, une faille ou un volcan apparaît sur la carte |
 | **Administration** | éditeurs, admins | une rubrique par système (onglets), les comptes, NationsGlory et le journal |
 
 ```
@@ -33,7 +33,7 @@ Les outils internes de notre pays sur NationsGlory : un **logiciel téléchargea
 | `src/syncron_server/` | API : FastAPI, SQLAlchemy 2 async, Alembic, Discord OAuth2, JWT, un routeur par système |
 | `src/syncron_client/` | Client de bureau : connexion, session, notifications, plateforme d'outils, un paquet par outil |
 | `deploy/` | Dockerfile, docker-compose (PostgreSQL + API + Caddy), `.env.example`, sauvegardes, catalogue d'exemple |
-| `tests/` | 200 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
+| `tests/` | 208 tests : noyau, API sur PostgreSQL réel, client de bout en bout contre un vrai serveur |
 | `docs/` | `DEPLOIEMENT.md` (mise en ligne, mises à jour), `ARCHITECTURE.md` (systèmes, ajouter un outil), `SECURITE.md` (audit) |
 
 ## Démarrage rapide (développement)
@@ -57,6 +57,13 @@ ruff check . && ruff format --check .
 ## Production
 
 Voir [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) : application Discord, `docker compose up -d --build`, build du client avec `python build_client.py --server-url https://…`, rôles et systèmes confiés, mises à jour, sauvegardes.
+
+## Nouveautés de la 5.3
+
+- **Recherche** : la carte NationsGlory dans le logiciel. Pays à gauche (recherche par pays ou par joueur), carte au centre (déplacer, zoomer, couches Frontières, Claims, Régions, Marqueurs, Noms, Événements), fiche à droite : chunks, région, pétrole et gaz, maisons, membres avec leur grade et le chef ★. Clic sur un marqueur : ressources du biome ; « Infos monde » : heure et météo du jeu, régions, biomes. Gardée sur le disque pour le hors-ligne.
+- **Mes alertes** : alerte dès qu'une **météorite**, une **faille** ou un **volcan** apparaît sur la carte (notification dans le logiciel et sur le bureau, pastille) ; chacun choisit ses types ; un clic ouvre la carte à l'endroit de l'événement. Liste des événements en cours et des 7 derniers jours.
+- **Serveur** : collecteur de la carte Iris (météo chaque minute, carte toutes les 30 minutes, membres deux fois par jour) et écran Administration › NationsGlory › Carte Iris.
+- **Message « Not Found »** plus clair : il indique la version du serveur qui répond et la route manquante.
 
 ## Nouveautés de la 5.2.1
 

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QPushButton, QStackedWi
 from syncron_client.platform.admin import AdminSection
 from syncron_client.platform.tool import Placement, Tool, ToolHost, ToolInfo
 from syncron_client.tools.admin.audit import AuditView
+from syncron_client.tools.admin.iris import IrisView
 from syncron_client.tools.admin.nationsglory import NationsGloryView
 from syncron_client.tools.admin.overview import SYSTEM_ICONS, OverviewView
 from syncron_client.tools.admin.users import UsersView
@@ -31,6 +32,7 @@ OVERVIEW = "admin.overview"
 USERS = "admin.users"
 AUDIT = "admin.audit"
 NATIONSGLORY = "admin.nationsglory"
+IRIS = "admin.iris"
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,7 +201,7 @@ class AdminTool(Tool):
         name="Administration",
         description="Gestion de chaque système du pays, des comptes et du journal.",
         icon="shield",
-        version="5.2.1",
+        version="5.3.0",
         min_role="editor",
         placement=Placement.MANAGE,
     )
@@ -259,7 +261,10 @@ class AdminTool(Tool):
                     "NationsGlory",
                     SYSTEM_ICONS["nationsglory"],
                     "nationsglory",
-                    (AdminSection(NATIONSGLORY, "API NationsGlory", "globe", lambda: NationsGloryView(host)),),
+                    (
+                        AdminSection(IRIS, "Carte Iris", "map", lambda: IrisView(host)),
+                        AdminSection(NATIONSGLORY, "API NationsGlory", "globe", lambda: NationsGloryView(host)),
+                    ),
                 )
             )
         groups.append(

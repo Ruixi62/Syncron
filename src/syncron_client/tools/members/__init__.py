@@ -145,7 +145,7 @@ class MembersTool(Tool):
         name="Membres",
         description="L'annuaire du pays : qui fait quoi, pseudos en jeu, spécialités et disponibilités.",
         icon="users",
-        version="5.2.1",
+        version="5.3.0",
         parent="country",
     )
 

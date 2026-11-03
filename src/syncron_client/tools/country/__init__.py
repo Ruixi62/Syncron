@@ -146,7 +146,7 @@ class CountryTool(HubTool):
         name="Pays",
         description="La page du pays : avancement de la R&D, membres et banque.",
         icon="flag",
-        version="5.2.1",
+        version="5.3.0",
     )
 
     def __init__(self) -> None:

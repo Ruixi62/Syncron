@@ -287,14 +287,6 @@ def test_research_progress_is_tracked_from_the_research_page(make_launcher, tmp_
     assert reader.registry.get("research").status().badge == ""
 
 
-def test_alerts_tool_is_a_work_in_progress_page(make_launcher, tmp_path):
-    shell = member(make_launcher, tmp_path)
-    shell.window.show_page("alerts")
-    alerts = shell.registry.get("alerts")
-    assert alerts.info.stage.value == "planned"
-    assert "API NationsGlory" in alerts.info.description
-
-
 def test_recurring_and_single_day_events(make_launcher, tmp_path):
     chef = sign_in(make_launcher(user_dir=tmp_path / "chef"), "chef", "admin")
     today = date.today()
@@ -505,7 +497,9 @@ def test_admin_navigation_has_tabs_and_subtabs(make_launcher, tmp_path):
     overview.manageRequested.emit("calendar")
     assert page.current_group == "calendar" and not page.subtabs.isVisible()
 
-    view = page.show_group("nationsglory")
+    iris = page.show_group("nationsglory")
+    assert page.current_key == "admin.iris" and iris.status["world"] == "earth"
+    view = page.show_section("admin.nationsglory")
     assert view.status is not None and not view.status["configured"]
     assert not view.call_button.isEnabled() and view.setup_hint.isVisibleTo(view)
     view.kind.setCurrentIndex(view.kind.findData("user"))
@@ -519,8 +513,10 @@ def test_missing_server_route_gets_a_clear_message():
 
     from syncron_client.api.client import _error_from
 
-    error = _error_from(httpx.Response(404, json={"detail": "Not Found"}))
-    assert "pas encore sur le serveur" in error.message
+    request = httpx.Request("PUT", "https://syncron.test/api/v1/profile")
+    error = _error_from(httpx.Response(404, json={"detail": "Not Found"}, request=request), "4.4.0")
+    assert "ne connaît pas cette fonction (/api/v1/profile)" in error.message and "4.4.0" in error.message
+    assert "https://syncron.test/api/v1/meta" in error.message
     assert _error_from(httpx.Response(404, json={"detail": "Image introuvable."})).message == "Image introuvable."
 
 

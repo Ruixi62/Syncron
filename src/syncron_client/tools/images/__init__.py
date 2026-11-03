@@ -34,7 +34,7 @@ class ImagesTool(Tool):
         name="Images",
         description="Héberge tes images sur le serveur du pays et partage leur lien, sur Discord ou ailleurs.",
         icon="image",
-        version="5.2.1",
+        version="5.3.0",
         system="images",
     )
 

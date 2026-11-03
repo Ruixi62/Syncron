@@ -486,3 +486,47 @@ class BankTransaction(Base):
         ),
         CheckConstraint("label <> ''", name="label"),
     )
+
+
+# -- Iris (carte NationsGlory) ---------------------------------------------------------------
+
+IRIS_KINDS = ("territories", "atlas", "frontiers", "regions", "weather", "state", "members")
+EVENT_KINDS = ("meteor", "rift", "volcano", "other")
+
+
+class IrisSnapshot(Base):
+    """Dernière réponse d'iris.nationsglory.fr pour une donnée (une ligne par donnée)."""
+
+    __tablename__ = "iris_snapshots"
+
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)
+    payload: Mapped[Any | None] = mapped_column(JSON)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    error: Mapped[str] = mapped_column(String(300), default="")
+
+    __table_args__ = (
+        CheckConstraint(
+            "kind in ('territories', 'atlas', 'frontiers', 'regions', 'weather', 'state', 'members')", name="kind"
+        ),
+    )
+
+
+class IrisEvent(Base):
+    """Événement météo vu sur la carte (météorite, faille, volcan…) : début, dernière vue, fin."""
+
+    __tablename__ = "iris_events"
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True)
+    kind: Mapped[str] = mapped_column(String(16), default="other")
+    title: Mapped[str] = mapped_column(String(160))
+    x: Mapped[int | None] = mapped_column(Integer)
+    z: Mapped[int | None] = mapped_column(Integer)
+    payload: Mapped[Any | None] = mapped_column(JSON)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (CheckConstraint("kind in ('meteor', 'rift', 'volcano', 'other')", name="kind"),)

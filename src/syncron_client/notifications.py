@@ -32,6 +32,7 @@ class NotificationCenter(QObject):
     unreadChanged = Signal(int)
     received = Signal(list)  # nouveaux messages (dict), du plus récent au plus ancien
     changed = Signal()  # boîte modifiée : nouveaux messages, lus, supprimés
+    alerted = Signal(str, str, str, str)  # titre, texte, outil à ouvrir, élément (alertes des outils)
 
     def __init__(
         self,
@@ -73,6 +74,11 @@ class NotificationCenter(QObject):
             self._session.onlineChanged.disconnect(self._on_online_changed)
         except (RuntimeError, TypeError):
             return
+
+    def alert(self, title: str, body: str, tool_id: str = "", key: str = "") -> None:
+        """Alerte d'un outil (ex. météorite) : notification dans le logiciel et sur le bureau ;
+        un clic sur la notification du bureau ouvre `tool_id` sur `key`."""
+        self.alerted.emit(title, body, tool_id, key)
 
     def poll(self) -> None:
         if self.active:

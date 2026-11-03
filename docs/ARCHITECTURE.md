@@ -1,4 +1,4 @@
-# Syncron 5.2 — Architecture
+# Syncron 5.3 — Architecture
 
 Syncron est le logiciel interne d'un pays de NationsGlory : un client de bureau réservé aux membres, connecté à une API hébergée.
 
@@ -27,9 +27,9 @@ Tout est découpé en **systèmes**. Chacun a ses tables, ses routes de lecture,
 | `bank` | `/api/v1/bank` | `/api/v1/admin/bank/transactions[/{id}]` | Pays › Banque |
 | `messages` | `/api/v1/inbox` | `/api/v1/admin/messages` | Messagerie |
 | `images` | `/api/v1/images` (envoi par tout membre) | suppression de toute image | Images |
-| `nationsglory` | `/api/v1/nationsglory/country` | `/api/v1/admin/nationsglory/…` | Administration › NationsGlory |
+| `nationsglory` | `/api/v1/nationsglory/country`, `/api/v1/iris/{map,live,members,events}` | `/api/v1/admin/nationsglory/…`, `/api/v1/admin/iris[/refresh]` | Recherche, Mes alertes, Administration › NationsGlory |
 | — | `/api/v1/profile`, `/api/v1/members` | chacun son profil | Membres, Paramètres › Profil |
-| — | — | — | Convertisseur (local), Alertes (en travaux) |
+| — | — | — | Convertisseur (local) |
 
 Un éditeur gère les systèmes listés dans `users.permissions` ; un administrateur les gère tous, plus les comptes (`accounts` dans le journal).
 
@@ -160,6 +160,21 @@ Tout système publie une nouvelle avec `messaging.post_message(session, system=�
 
 `nationsglory.py` : client de l'API publique (https://publicapi.nationsglory.fr). Routes connues : `playercount`, `country/{serveur}/{pays}`, `country/list/{serveur}`, `notations`, `mmr`, `hdv/{serveur}`, `planning`, `user/{pseudo}`. Chaque appel passe par des paramètres validés, sans redirection, 2 Mo au plus, avec un cache en mémoire ; la réponse est gardée dans `ng_snapshots` (100 par route, 5 000 au total). Les futurs outils (Alertes…) liront ces données en base plutôt que d'appeler l'API eux-mêmes.
 
+### Carte Iris
+
+`iris.py` : collecteur d'https://iris.nationsglory.fr, la carte publique du serveur. Une tâche de fond lancée avec l'API ; un **verrou PostgreSQL** (`pg_try_advisory_lock`) fait qu'un seul processus interroge le site.
+
+| Tâche | Fréquence (`.env`) | Routes d'Iris | Gardé dans |
+|---|---|---|---|
+| météo | 60 s (`SYNCRON_IRIS_WEATHER_SECONDS`) | `/api/weather/<monde>`, `/api/state` | `iris_snapshots` (`weather`, `state`) et `iris_events` |
+| carte | 30 min (`SYNCRON_IRIS_MAP_MINUTES`) | `/api/{territories,atlas,frontiers,regions}/<monde>` | `iris_snapshots` |
+| membres | 12 h (`SYNCRON_IRIS_MEMBERS_HOURS`) | `/api/countries/<id>/members`, pause entre deux pays | `iris_snapshots` (`members`) |
+
+- `iris_snapshots` : une ligne par donnée, la dernière réponse ; en cas d'échec, l'ancienne est gardée et l'erreur notée (Administration › NationsGlory › Carte Iris).
+- `iris_events` : chaque événement météo (météorite, faille, volcan, autre), reconnu d'après ses mots et sa position (`x`/`z`, `pos`, `location`…), avec `first_seen`, `last_seen`, `ended_at`. Le format exact d'Iris n'étant pas documenté, `normalize_events` reste tolérant.
+- HTTPS seulement, sans redirection, 40 Mo au plus par réponse. Les routes `/api/v1/iris/{map,live,members}` répondent avec un **ETag** (304 si rien n'a changé) et gardent le JSON assemblé en mémoire.
+- Coordonnées : formes (territoires, frontières, régions) en **chunks** (1 chunk = 16 blocs) ; maisons, marqueurs, atlas et événements en **blocs**.
+
 ### Protections HTTP
 
 `protection.py` : limite de débit par adresse sur `/api/v1/auth/*` (`SYNCRON_AUTH_RATE_LIMIT`, 30 par minute) et taille maximale des requêtes (`SYNCRON_MAX_REQUEST_BYTES`, 5 Mo). Les images sont refusées au-delà de 4096 × 4096 pixels avant décodage. Détails dans `SECURITE.md`.
@@ -193,6 +208,8 @@ Tout système publie une nouvelle avec `messaging.post_message(session, system=�
 | PATCH, DELETE | `/api/v1/images/{id}` | auteur de l'image, ou Images |
 | GET, PUT | `/api/v1/profile` · GET `/api/v1/members[/{id}]` | connecté (son profil ; annuaire sans comptes suspendus) |
 | GET | `/api/v1/nationsglory/country` (dernières données du pays) | connecté |
+| GET | `/api/v1/iris/map`, `/live`, `/members` (ETag) · `/api/v1/iris/events` (en cours et 7 jours) | connecté |
+| GET, POST | `/api/v1/admin/iris`, `/refresh` (`weather`, `map`, `members`) | NationsGlory |
 | GET | `/api/v1/bank` (solde, 30 jours, opérations, contributeurs) | connecté |
 | POST, PUT, DELETE | `/api/v1/admin/bank/transactions[/{id}]` | Banque |
 | GET, POST | `/api/v1/admin/nationsglory`, `/fetch`, `/snapshots[/{id}]` | NationsGlory |
@@ -206,8 +223,8 @@ Launcher ──▶ LoginWindow ──(Discord / reprise / hors ligne)──▶ S
    │                                                            │
    ├─ ApiClient (httpx, renouvellement des jetons)              ├─ Accueil (cartes des outils) · Paramètres
    ├─ TokenStore (coffre du système, ou fichier en repli)       ├─ Messagerie            (barre latérale, en haut)
-   ├─ CatalogStore (cache disque, ETag, images)                 ├─ Pays (Accueil · R&D · Membres · Banque) · Craft · Calendrier · Recherche (en travaux)
-   │                                                            ├─ Convertisseur · Images · Mes alertes (en travaux)
+   ├─ CatalogStore (cache disque, ETag, images)                 ├─ Pays (Accueil · R&D · Membres · Banque) · Craft · Calendrier · Recherche (carte)
+   │                                                            ├─ Convertisseur · Images · Mes alertes
    ├─ NotificationCenter (cloche, bulles, bureau)               └─ Administration        (Gestion, éditeurs+)
    ├─ Session (utilisateur, rôle, systèmes confiés, en ligne)
    └─ TaskRunner (QThreadPool → retour dans le thread de l'interface)
@@ -215,6 +232,8 @@ Launcher ──▶ LoginWindow ──(Discord / reprise / hors ligne)──▶ S
 
 - **Aucun appel réseau dans le thread de l'interface** : `TaskRunner` exécute les appels dans le pool de Qt.
 - **Notifications** : `NotificationCenter` interroge `/inbox/summary` toutes les 60 secondes. Un message plus récent que le dernier vu (mémorisé par compte) déclenche une bulle, la pastille de la cloche et, si la fenêtre est en arrière-plan, une notification du bureau (désactivable dans Paramètres).
+- **Alertes des outils** : `host.notifications.alert(titre, texte, outil, clé)` affiche une bulle et, fenêtre en arrière-plan, une notification du bureau ; un clic dessus ouvre `outil` sur `clé`. Mes alertes s'en sert pour les événements météo d'Iris (vérification toutes les 30 secondes, types choisis par chacun, un événement n'alerte qu'une fois).
+- **Recherche** : carte dessinée avec `QPainter` (`tools/intel/map_view.py`) à partir des données d'Iris, gardées sur le disque pour le hors-ligne ; heure et météo du jeu rafraîchies chaque minute tant que la page est ouverte.
 - **Thème** : `ui/theme.py` définit les palettes Sombre, Clair, Forêt et Cerisier ; `COLORS` est un seul objet dont les valeurs changent (`use_palette`). Changer de thème (Paramètres › Apparence, ou le système en mode « Système ») réapplique la feuille de style et reconstruit les fenêtres.
 - **Hors ligne** : si le serveur est injoignable, l'application s'ouvre en lecture seule sur les dernières données reçues (catalogue, R&D, calendrier), avec une pastille « Hors ligne · Réessayer ».
 - **Version minimale** : `/meta.min_client_version` bloque les clients trop anciens.

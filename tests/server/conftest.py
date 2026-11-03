@@ -93,7 +93,7 @@ async def database(settings):
             text(
                 "truncate audit_log, recipe_ingredients, item_requirements, items, stations, skills, "
                 "login_codes, refresh_tokens, users, message_receipts, messages, calendar_events, "
-                "hosted_images, ng_snapshots, bank_transactions, "
+                "hosted_images, ng_snapshots, bank_transactions, iris_snapshots, iris_events, "
                 "research_lines, research_tiers, research_categories restart identity cascade"
             )
         )

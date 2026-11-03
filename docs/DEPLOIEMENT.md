@@ -82,7 +82,23 @@ Dans **Comptes**, passe un membre en Éditeur, puis choisis ses systèmes dans l
 - **Serveur** : `git pull && docker compose up -d --build`. Les migrations s'appliquent toutes seules.
 - **Client** : publie le nouveau build. Pour obliger les membres à mettre à jour, augmente `SYNCRON_MIN_CLIENT_VERSION` dans `.env`, puis lance `docker compose up -d`. Les anciens clients affichent alors « Mise à jour requise ».
 
-## 8. Passer à la 5.2
+## 8. Passer à la 5.3
+
+La migration `0008` crée les tables de la carte Iris (`iris_snapshots`, `iris_events`). Au démarrage, l'API lance le **collecteur Iris** : météo et heure du jeu chaque minute, carte toutes les 30 minutes, membres des pays toutes les 12 heures (réglages `SYNCRON_IRIS_*` dans `.env`, voir `.env.example`). Un seul processus de l'API interroge le site (verrou PostgreSQL).
+
+1. Sur le serveur : `git pull && docker compose up -d --build`.
+2. Vérifie `https://<ton domaine>/api/v1/meta` : `"version"` doit valoir `5.3.0`.
+3. Administration › NationsGlory › **Carte Iris** : chaque donnée doit avoir une « Dernière réponse » après une minute (la carte peut prendre jusqu'à 30 minutes, ou bouton « Carte » pour la lancer tout de suite).
+4. Publie le client : pousse sur `main`, la Release `v5.3.0` se crée et les clients se mettent à jour seuls.
+
+**Le logiciel affiche « Le serveur du pays … ne connaît pas cette fonction » (ou « Not Found ») ?** C'est toujours l'ancienne API qui répond. Le message indique la version qui répond ; si elle est plus ancienne que le logiciel :
+
+1. `curl https://<ton domaine>/api/v1/meta` : quelle `version` répond ?
+2. `docker ps` : une seule pile Syncron doit tourner. Une ancienne pile (autre dossier, autre nom de projet) qui occupe encore les ports 80/443 répond à la place de la nouvelle : l'arrêter (`docker compose down` dans son dossier, ou `docker stop <id>`).
+3. Dans le bon dossier : `git log -1` (le dernier commit doit être celui de la mise à jour), puis `docker compose build --no-cache api && docker compose up -d`.
+4. `docker compose logs api --tail 50` : les migrations doivent s'appliquer sans erreur (`Running upgrade 0007 -> 0008`).
+
+### Passer à la 5.2
 
 La migration `0007` crée la table de la banque. Rien d'autre ne change côté serveur.
 

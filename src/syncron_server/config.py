@@ -50,12 +50,21 @@ class Settings(BaseSettings):
     ng_country: str = Field("", pattern=r"^[a-z0-9_-]{0,64}$", description="Identifiant du pays sur NationsGlory")
     ng_cache_seconds: int = Field(300, ge=0, le=86_400)
     ng_timeout_seconds: float = Field(10.0, gt=0, le=60)
+    iris_enabled: bool = Field(True, description="Récupère la carte et la météo d'iris.nationsglory.fr")
+    iris_url: str = Field("https://iris.nationsglory.fr", description="Site de la carte NationsGlory")
+    iris_world: str = Field("earth", pattern=r"^[a-z0-9_-]{1,32}$")
+    iris_weather_seconds: int = Field(60, ge=20, le=3600, description="Météo et état du jeu (alertes)")
+    iris_map_minutes: int = Field(30, ge=5, le=1440, description="Territoires, atlas, frontières, régions")
+    iris_members_hours: int = Field(12, ge=1, le=168, description="Membres de chaque pays")
+    iris_pause_seconds: float = Field(0.2, ge=0.05, le=5, description="Pause entre deux requêtes de membres")
     hosted_images_total_bytes: int = Field(
         2 * 1024 * 1024 * 1024, ge=0, description="Espace total des images hébergées (0 = illimité)"
     )
 
     @model_validator(mode="after")
     def _check(self) -> Settings:
+        if not self.iris_url.startswith("https://"):
+            raise ValueError("SYNCRON_IRIS_URL doit commencer par https://.")
         if not self.ng_api_url.startswith("https://"):
             raise ValueError("SYNCRON_NG_API_URL doit commencer par https:// (la clé y est envoyée).")
         if self.dev_login and self.env is Environment.PRODUCTION:

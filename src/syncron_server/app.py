@@ -13,9 +13,10 @@ from fastapi.staticfiles import StaticFiles
 from syncron_core import APP_NAME, __version__
 from syncron_core.errors import AppError
 from syncron_server.catalog_store import CatalogValidationError
-from syncron_server.config import Settings
+from syncron_server.config import Environment, Settings
 from syncron_server.db import Database
 from syncron_server.discord import DiscordOAuth, DiscordProvider
+from syncron_server.iris import IrisClient, IrisCollector
 from syncron_server.nationsglory import NationsGloryClient
 from syncron_server.protection import AuthRateLimit, BodySizeLimit, SlidingWindow
 from syncron_server.routers import (
@@ -27,6 +28,7 @@ from syncron_server.routers import (
     craft_admin,
     images,
     inbox,
+    iris,
     members,
     nationsglory,
     research,
@@ -34,6 +36,7 @@ from syncron_server.routers import (
 from syncron_server.schemas import IssueOut
 
 NG_CALLS_PER_MINUTE = 20  # appels directs à l'API NationsGlory, par compte (le cache ne compte pas)
+IRIS_REFRESHES_PER_10_MINUTES = 6  # relances manuelles de la collecte Iris, par compte
 
 
 def create_app(
@@ -41,13 +44,25 @@ def create_app(
     database: Database | None = None,
     discord: DiscordProvider | None = None,
     nationsglory_transport: httpx.AsyncBaseTransport | None = None,
+    iris_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     database = database or Database(settings.database_url)
+    collector = IrisCollector(
+        database,
+        IrisClient(settings.iris_url, settings.iris_world, transport=iris_transport),
+        settings.iris_weather_seconds,
+        settings.iris_map_minutes,
+        settings.iris_members_hours,
+        settings.iris_pause_seconds,
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        if settings.iris_enabled and settings.env != Environment.TEST:
+            collector.start()
         yield
+        await collector.stop()
         await database.dispose()
 
     app = FastAPI(
@@ -74,6 +89,10 @@ def create_app(
         settings.ng_cache_seconds,
         transport=nationsglory_transport,
     )
+    app.state.iris = collector
+    app.state.iris_cache = {}
+    app.state.iris_tasks = set()
+    app.state.iris_refreshes = SlidingWindow(IRIS_REFRESHES_PER_10_MINUTES, 600)
 
     @app.exception_handler(CatalogValidationError)
     async def _validation(_request: Request, exc: CatalogValidationError) -> JSONResponse:
@@ -95,7 +114,7 @@ def create_app(
     app.include_router(catalog.router)
     app.include_router(admin.router)
     app.include_router(craft_admin.router)
-    for module in (research, calendar, bank, inbox, nationsglory):
+    for module in (research, calendar, bank, inbox, nationsglory, iris):
         app.include_router(module.router)
         app.include_router(module.admin_router)
     app.include_router(images.router)

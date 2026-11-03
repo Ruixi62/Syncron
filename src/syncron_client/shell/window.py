@@ -93,6 +93,7 @@ class ShellWindow(QMainWindow):
         self._toast = Toast(self)
         self._palette = CommandPalette(registry, self)
         self._tray: QSystemTrayIcon | None = None
+        self._tray_target = (MAILBOX_ID, "")
         self._top_bar.set_notifications_available(MAILBOX_ID in registry and host.session.user is not None)
 
         self._sidebar.navigate.connect(self.show_page)
@@ -111,6 +112,7 @@ class ShellWindow(QMainWindow):
         host.notifications.unreadChanged.connect(self._top_bar.set_unread)
         host.notifications.unreadChanged.connect(self._update_badge)
         host.notifications.received.connect(self._on_messages_received)
+        host.notifications.alerted.connect(self._on_alert)
         host.session.onlineChanged.connect(self._on_online_changed)
         self._install_shortcuts()
         self._refresh_account()
@@ -237,23 +239,38 @@ class ShellWindow(QMainWindow):
             tray = self._desktop_tray()
             if tray is not None:
                 body = messages[0].get("body", "") if len(messages) == 1 else text
+                self._tray_target = (MAILBOX_ID, "")
                 tray.showMessage(messages[0]["title"] if len(messages) == 1 else APP_DISPLAY_NAME, body[:240])
+
+    def _on_alert(self, title: str, body: str, tool_id: str, key: str) -> None:
+        self._toast.show_message(f"{title} — {body}" if body else title, NotifyLevel.WARNING)
+        if not self.isActiveWindow():
+            QApplication.alert(self)
+        if not self.isActiveWindow() and self._settings.get(DESKTOP_NOTIFICATIONS_KEY, True) is not False:
+            tray = self._desktop_tray()
+            if tray is not None:
+                self._tray_target = (tool_id or MAILBOX_ID, key)
+                tray.showMessage(title, body[:240], QSystemTrayIcon.MessageIcon.Warning)
 
     def _desktop_tray(self) -> QSystemTrayIcon | None:
         """Icône de notification du système, créée au premier besoin (absente sur certains bureaux Linux)."""
         if self._tray is None and QSystemTrayIcon.isSystemTrayAvailable():
             self._tray = QSystemTrayIcon(app_icon(), self)
             self._tray.setToolTip(APP_DISPLAY_NAME)
-            self._tray.messageClicked.connect(self._bring_to_mailbox)
-            self._tray.activated.connect(lambda _reason: self._bring_to_mailbox())
+            self._tray.messageClicked.connect(self._open_tray_target)
+            self._tray.activated.connect(lambda _reason: self._open_tray_target())
             self._tray.show()
         return self._tray
 
-    def _bring_to_mailbox(self) -> None:
+    def _open_tray_target(self) -> None:
+        tool_id, key = self._tray_target
         self.showNormal()
         self.raise_()
         self.activateWindow()
-        self.show_page(MAILBOX_ID)
+        if key:
+            self.open_in_tool(tool_id, key)
+        else:
+            self.show_page(tool_id)
 
     # -- interne -----------------------------------------------------------------
 

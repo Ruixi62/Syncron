@@ -39,6 +39,7 @@ class ApiClient:
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self.on_refresh_token_changed: TokensChanged | None = None
+        self.server_version = ""
 
     # -- jetons --------------------------------------------------------------------
 
@@ -64,7 +65,9 @@ class ApiClient:
     # -- authentification ------------------------------------------------------------
 
     def meta(self) -> dict[str, Any]:
-        return self._request("GET", "/api/v1/meta", auth=False).json()
+        meta = self._request("GET", "/api/v1/meta", auth=False).json()
+        self.server_version = str(meta.get("version") or "")
+        return meta
 
     def exchange_login_code(self, code: str, verifier: str) -> dict[str, Any]:
         response = self._request(
@@ -165,6 +168,25 @@ class ApiClient:
 
     def nationsglory_snapshot(self, snapshot_id: int) -> dict[str, Any]:
         return self._json("GET", f"/api/v1/admin/nationsglory/snapshots/{snapshot_id}")
+
+    # -- Iris (carte NationsGlory) -----------------------------------------------------------
+
+    def iris(self, part: str, etag: str = "") -> tuple[dict[str, Any] | None, str]:
+        """`part` : map, live ou members. Renvoie (None, etag) si le logiciel a déjà cette version."""
+        headers = {"If-None-Match": etag} if etag else None
+        response = self._request("GET", f"/api/v1/iris/{part}", expected=(200, 304), headers=headers)
+        if response.status_code == 304:
+            return None, etag
+        return response.json(), response.headers.get("etag", "")
+
+    def iris_events(self) -> dict[str, Any]:
+        return self._json("GET", "/api/v1/iris/events")
+
+    def iris_status(self) -> dict[str, Any]:
+        return self._json("GET", "/api/v1/admin/iris")
+
+    def iris_refresh(self, job: str) -> dict[str, Any]:
+        return self._json("POST", "/api/v1/admin/iris/refresh", json={"job": job})
 
     # -- images ------------------------------------------------------------------------------
 
@@ -321,7 +343,7 @@ class ApiClient:
         if response.status_code == 401 and auth:
             raise SessionExpired("Session expirée : reconnecte-toi.", 401)
         if response.status_code not in expected:
-            raise _error_from(response)
+            raise _error_from(response, self.server_version)
         return response
 
     def _send(self, method: str, url: str, auth: bool, **kwargs: Any) -> httpx.Response:
@@ -343,14 +365,14 @@ class ApiClient:
             self.set_tokens(None, None)
             raise SessionExpired("Session expirée : reconnecte-toi.", response.status_code)
         if response.status_code != 200:
-            raise _error_from(response)
+            raise _error_from(response, self.server_version)
         self._apply_token_pair(response.json())
 
     def close(self) -> None:
         self._http.close()
 
 
-def _error_from(response: httpx.Response) -> ApiError:
+def _error_from(response: httpx.Response, server_version: str = "") -> ApiError:
     message = f"Erreur du serveur ({response.status_code})."
     issues: list[Issue] = []
     try:
@@ -360,9 +382,10 @@ def _error_from(response: httpx.Response) -> ApiError:
     if isinstance(payload, dict):
         detail = payload.get("detail")
         if response.status_code == 404 and detail == "Not Found":
+            version = f" (il répond en version {server_version})" if server_version else ""
             message = (
-                "Cette fonction n'existe pas encore sur le serveur du pays : il n'est sans doute pas à jour. "
-                "Préviens l'équipe."
+                f"Le serveur du pays{version} ne connaît pas cette fonction ({response.request.url.path}) : "
+                f"il n'est pas à jour. Vérifie {response.request.url.scheme}://{response.request.url.host}/api/v1/meta."
             )
         elif isinstance(detail, str):
             message = detail

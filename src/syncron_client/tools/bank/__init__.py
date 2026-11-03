@@ -377,7 +377,7 @@ class BankTool(Tool):
         name="Banque",
         description="Le solde du pays, ses entrées et ses sorties, et les plus généreux contributeurs.",
         icon="database",
-        version="5.2.1",
+        version="5.3.0",
         system="bank",
         parent="country",
     )

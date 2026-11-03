@@ -1,4 +1,4 @@
-# Audit de sécurité — Syncron 4.3, mis à jour en 4.5, 5.1 et 5.2
+# Audit de sécurité — Syncron 4.3, mis à jour en 4.5, 5.1, 5.2 et 5.3
 
 Revue du serveur (FastAPI, PostgreSQL), du client (PySide6), du déploiement (Docker, Caddy) et de la mise à jour automatique. Chaque point corrigé est couvert par un test (`tests/server/test_security.py`, `tests/client/test_units.py`, `tests/client/test_systems_ui.py`).
 
@@ -13,6 +13,13 @@ Revue du serveur (FastAPI, PostgreSQL), du client (PySide6), du déploiement (Do
 | 5 | Faible | **Taille des requêtes** limitée seulement par Caddy : une API exposée sans Caddy acceptait des corps JSON énormes (import). | Limite dans l'application aussi : 5 Mo, portée à 10 Mo en 4.5 pour les images (`SYNCRON_MAX_REQUEST_BYTES`), réponse 413. |
 | 6 | Faible | **Image envoyée pour un objet inexistant** : le fichier était écrit sur le disque avant la vérification, et l'identifiant n'était pas contrôlé. | Identifiant et existence vérifiés avant toute écriture. |
 | 7 | Faible | **Mise à jour automatique** : l'archive pouvait venir de n'importe quel hôte indiqué par la Release, sans limite de taille, et l'extraction faisait confiance aux chemins du zip. | Téléchargements uniquement depuis GitHub en HTTPS (redirections comprises), 400 Mo au plus, 1 Go une fois extrait, chemins vérifiés un par un avant extraction. |
+
+## Vérifié en 5.3 (carte Iris)
+
+- **Un seul client vers Iris** : c'est le serveur qui interroge iris.nationsglory.fr, pas chaque logiciel. Adresse en `https://` obligatoire (refusée au démarrage sinon), monde limité à `[a-z0-9_-]`, identifiants de pays encodés dans l'URL, **aucune redirection suivie**, réponse plafonnée à 40 Mo et lue en flux, JSON invalide rejeté. Fréquences bornées dans la configuration (météo ≥ 20 s, carte ≥ 5 min, membres ≥ 1 h) et pause entre deux pays, pour rester correct envers le site.
+- **Relances manuelles** réservées au système « nationsglory », 6 par 10 minutes et par compte, inscrites au journal.
+- **Données du site affichées telles quelles** dans le logiciel (noms de pays, joueurs, grades, événements) : textes en `PlainText`, couleurs acceptées seulement au format `#rrggbb`, info-bulle de la carte en texte brut.
+- **Alertes** : personnelles, gardées sur le poste (types suivis, événements déjà vus) ; rien n'est publié dans la messagerie.
 
 ## Vérifié en 5.2
 
